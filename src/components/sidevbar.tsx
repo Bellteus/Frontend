@@ -66,7 +66,7 @@ const handleLogout = async ()=>{
     {!collapsed && DashboardExpanded && (
       <div className="ml-8 mt-1 space-y-1">
         <NavLink
-          to="/dashboard/inicio"
+          to="/dashboard"
           className={({ isActive }) =>
             `flex items-center p-2 pl-3 hover:bg-gray-200 text-xs transition-all duration-300 ${
               isActive ? 'bg-gray-200 font-medium' : ''
@@ -77,7 +77,7 @@ const handleLogout = async ()=>{
           <span className='ml-2'>Inicio</span>
         </NavLink>
         <NavLink
-          to="/dashboard/performance"
+          to="dashboard/Performance"
           className={({ isActive }) =>
             `flex items-center p-2 pl-3 hover:bg-gray-200 text-xs transition-all duration-300 ${
               isActive ? 'bg-gray-200 font-medium' : ''
