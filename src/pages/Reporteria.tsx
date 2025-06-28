@@ -36,7 +36,7 @@ const formatDateToDMY = (dateStr: string): string => {
     return `${hours}:${minutes}:${seconds}`;
   };
 const CallSearchTable: React.FC = () => {
-  const [calls, setCalls] = useState<CallAnalysis[]>([]);
+  const [calls, setCalls] = useState<CallAnalysis[]>([] );
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -74,7 +74,7 @@ const CallSearchTable: React.FC = () => {
 
 
   return (
-    <div className="flex flex-col h-[calc(100vh-80px)] p-6 overflow-hidden">
+    <div className="flex flex-col h-screen p-6 overflow-hidden">
       <h1 className="text-2xl font-bold mb-4">Búsqueda de Llamadas</h1>
 
       {/* Filtros principales */}
@@ -117,11 +117,17 @@ const CallSearchTable: React.FC = () => {
         )}
       </div>
 
+
+    {loading && (
+            <div className="flex justify-center items-center mt-6">
+                <div className="flex flex-col items-center">
+                <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="mt-2 text-blue-600 font-semibold">Cargando datos...</p>
+                </div>
+            </div>)}
+
       {/* Tabla de resultados */}
-      <div className="flex-1 overflow-auto border rounded bg-white shadow">
-        {loading ? (
-          <div className="p-4">Cargando llamadas...</div>
-        ) : (
+      {!loading && calls.length>0  && (<div className="flex-1 overflow-auto border rounded bg-white shadow">
           <table className="min-w-[1200px] w-full table-auto text-sm">
             <thead className="sticky top-0 bg-gray-100 z-10">
               <tr>
@@ -131,6 +137,7 @@ const CallSearchTable: React.FC = () => {
                 <th className="px-4 py-2 border">Duración</th>
                 <th className="px-4 py-2 border">N° Destino</th>
                 <th className="px-4 py-2 border">Agencia</th>
+                <th className="px-4 py-2 border">Id Empleado</th>
                 <th className="px-4 py-2 border">Empleado</th>
                 <th className="px-4 py-2 border">Área</th>
                 <th className="px-4 py-2 border">Complejidad</th>
@@ -154,6 +161,7 @@ const CallSearchTable: React.FC = () => {
                   <td className="px-2 py-1 border">{calcularDuracion(call.FechaHoraInicio, call.FechaHoraFin)}</td>
                   <td className="px-2 py-1 border">{call.ANI}</td>
                   <td className="px-2 py-1 border">{call.Cliente}</td>
+                  <td className="px-2 py-1 border">{call.IdEmpleado}</td>
                   <td className="px-2 py-1 border">{call.NombreEmpleado}</td>
                   <td className="px-2 py-1 border">{call.NombreArea}</td>
                   <td className="px-2 py-1 border">{call.ANALISIS_LLM.complejidad_caso}</td>
@@ -172,8 +180,16 @@ const CallSearchTable: React.FC = () => {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+      </div>)}
+      {!loading && calls.length==0 &&(
+        <div className="text-center align-middle justify-center h-full">
+            <h1>
+                No hay datos para mostrar
+            </h1>
+        </div>
+      )
+        
+      }
     </div>
   );
 };
