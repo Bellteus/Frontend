@@ -74,11 +74,10 @@ const CallSearchTable: React.FC = () => {
 
 
   return (
-    <div className="flex flex-col h-screen p-6 overflow-hidden">
-      <h1 className="text-2xl font-bold mb-4">Búsqueda de Llamadas</h1>
-
-      {/* Filtros principales */}
-      <div className="bg-white p-4 rounded shadow mb-4">
+<div className="flex flex-col h-screen p-6 overflow-hidden">
+    {/* Filtros principales */}
+    <div className="bg-white p-4 rounded shadow mb-4">
+    <h1 className="text-2xl font-bold mb-4">Búsqueda de Llamadas</h1>
         <div className="flex flex-wrap items-end gap-4">
           <div>
             <label className="font-medium">Fecha Inicio</label><br />
@@ -115,22 +114,23 @@ const CallSearchTable: React.FC = () => {
             </div>
           </div>
         )}
-      </div>
+    </div>
 
-
+    <div className="bg-white p-4 rounded shadow flex-1 overflow-auto">
     {loading && (
-            <div className="flex justify-center items-center mt-6">
+        <div className="flex items-center justify-center h-full">
                 <div className="flex flex-col items-center">
                 <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                    <p className="mt-2 text-blue-600 font-semibold">Cargando datos...</p>
+                    <p className="mt-2 text-blue-600 font-semibold"text-center text-lg text-gray-500>Cargando datos...</p>
                 </div>
             </div>)}
 
       {/* Tabla de resultados */}
-      {!loading && calls.length>0  && (<div className="flex-1 overflow-auto border rounded bg-white shadow">
-          <table className="min-w-[1200px] w-full table-auto text-sm">
-            <thead className="sticky top-0 bg-gray-100 z-10">
-              <tr>
+      {!loading && calls.length>0  && (
+        <div className="flex-1 overflow-auto border rounded bg-white shadow max-h-[70vh]">
+        <table className="min-w-[1200px] w-full table-auto text-sm">
+            <thead className="sticky top-0 bg-white z-10 shadow">
+            <tr>
                 <th className="px-4 py-2 border">Call ID</th>
                 <th className="px-4 py-2 border">Hora Inicio</th>
                 <th className="px-4 py-2 border">Hora Fin</th>
@@ -182,14 +182,13 @@ const CallSearchTable: React.FC = () => {
           </table>
       </div>)}
       {!loading && calls.length==0 &&(
-        <div className="text-center align-middle justify-center h-full">
-            <h1>
-                No hay datos para mostrar
-            </h1>
+        <div className="flex items-center justify-center h-full">
+            <h1 className="text-center text-lg text-gray-500">No hay datos para mostrar</h1>
         </div>
       )
         
       }
+    </div>
     </div>
   );
 };

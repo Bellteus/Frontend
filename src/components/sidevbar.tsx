@@ -67,6 +67,7 @@ const handleLogout = async ()=>{
       <div className="ml-8 mt-1 space-y-1">
         <NavLink
           to="/dashboard"
+          end
           className={({ isActive }) =>
             `flex items-center p-2 pl-3 hover:bg-gray-200 text-xs transition-all duration-300 ${
               isActive ? 'bg-gray-200 font-medium' : ''
@@ -105,7 +106,7 @@ const handleLogout = async ()=>{
         </NavLink>
 
         {/*Seccion auditoria */}
-        <NavLink
+        {/*<NavLink
           to="/auditoria"
           className={({ isActive }) =>
             `flex items-center p-3  transition-colors ${
@@ -115,9 +116,10 @@ const handleLogout = async ()=>{
           <FiUserCheck size={20} />
           {!collapsed && <span className="ml-3">Auditoria</span>}
         </NavLink>
-
+        */}
         {/*Seccion Administracion de usuarios */}
-        <div>
+       
+      <div>
           {/* Botón principal de Administracion */}
           <div className={`flex items-center p-3 cursor-pointer transition-all duration-300 hover:bg-gray-200 `}
             onClick={() => setAdministratorExpanded(!administratorExpanded)}>
@@ -135,6 +137,7 @@ const handleLogout = async ()=>{
                   </div>
                 )}
           </div>
+          
               {/* Submenu  del inventario con opciones  */}
               <div className={`overflow-hidden transition-all duration-300 ease-in-out 
                 ${!collapsed && administratorExpanded ? "max-h-128 opacity-100" : "max-h-0 opacity-0"}`}>
@@ -162,7 +165,8 @@ const handleLogout = async ()=>{
                   </div>
                   )}
               </div>
-        </div>
+        </div> 
+        
 
 
 

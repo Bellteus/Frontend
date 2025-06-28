@@ -59,25 +59,25 @@ const formatDateToDMY = (dateStr: string): string => {
   
     let lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY ?? 80;
   
-    simpleList('⭐ Fortalezas', data.fortalezas_recurrentes, lastY + 5);
+    simpleList('Fortalezas', data.fortalezas_recurrentes, lastY + 5);
     lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
-    simpleList('🔧 Oportunidades de Mejora', data.oportunidades_mejora_recurrentes, lastY + 5);
+    simpleList('Oportunidades de Mejora', data.oportunidades_mejora_recurrentes, lastY + 5);
     lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
-    simpleList('📣 Recomendaciones', data.recomendaciones, lastY + 5);
+    simpleList('Recomendaciones', data.recomendaciones, lastY + 5);
     lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
-    simpleList('🏆 Agentes Destacados', data.agentes_destacados, lastY + 5);
+    simpleList('Agentes Destacados', data.agentes_destacados, lastY + 5);
     lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
-    simpleList('⚠️ Agentes con Bajo Rendimiento', data.agentes_con_bajo_performance, lastY + 5);
+    simpleList('Agentes con Bajo Rendimiento', data.agentes_con_bajo_performance, lastY + 5);
     lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
-    simpleList('📌 Temas Principales', data.temas_principales, lastY + 5);
+    simpleList('Temas Principales', data.temas_principales, lastY + 5);
     lastY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? lastY;
-    simpleList('🔑 Palabras Clave Frecuentes', data.palabras_clave_frecuentes, lastY + 5);
+    simpleList('Palabras Clave Frecuentes', data.palabras_clave_frecuentes, lastY + 5);
     lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
-    simpleList('🚨 Alertas de Calidad', data.alertas_calidad_recurrentes, lastY + 5);
+    simpleList('Alertas de Calidad', data.alertas_calidad_recurrentes, lastY + 5);
   
     // Resumen ejecutivo
     doc.setFontSize(12);
-    doc.text('📝 Resumen Ejecutivo:', 14, ((doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 80) + 10);
+    doc.text('Resumen Ejecutivo:', 14, ((doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 80) + 10);
     doc.setFontSize(10);
     const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 80;
     doc.text(doc.splitTextToSize(data.resumen_ejecutivo, 180), 14, finalY + 16);
@@ -86,18 +86,95 @@ const formatDateToDMY = (dateStr: string): string => {
     doc.save(`Analisis_${data.cliente}_${new Date(data.DateTime_realizado).toISOString()}.pdf`);
   }
 
-function exportarAgentePDF(AGENTEPerformance:AgenteResponsePerformance):void{
+  export function exportarAgentePDF(data: AgenteResponsePerformance): void {
+        const doc = new jsPDF();
+        const now = new Date().toLocaleString();
+      
+        doc.setFontSize(16);
+        doc.text('Reporte de Análisis de Agente', 14, 15);
+        doc.setFontSize(10);
+        doc.text(`Fecha de generación: ${now}`, 14, 22);
+      
+        // Datos generales del agente
+        autoTable(doc, {
+          startY: 28,
+          head: [['Campo', 'Valor']],
+          body: [
+            ['ID Empleado', data.id_empleado],
+            ['Nombre', data.nombre_empleado],
+            ['Fecha análisis', new Date(data.DateTime_realizado).toLocaleString()],
+            ['Rango analizado', `${data.fecha_inicio_busqueda} a ${data.fecha_fin_busqueda}`],
+            ['N° de llamadas', data.numero_llamadas],
+            ['Score de performance promedio', data.performance_score_promedio.toFixed(2)],
+            ['Satisfacción cliente promedio', data.satisfaccion_cliente_promedio.toFixed(2)],
+            ['Dispersión performance', data.dispersión_performance_score?.toFixed(2) ?? 'N/A'],
+            ['Dispersión satisfacción', data.dispersión_satisfaccion_cliente?.toFixed(2) ?? 'N/A'],
+            ['Sentimiento predominante', data.sentimiento_predominante],
+            ['% Resueltos', `${data.porcentaje_resueltos}%`],
+            ['% Escalados', `${data.porcentaje_escalados}%`],
+            ['% Follow-up', `${data.porcentaje_followup}%`],
+            ['% Alertas calidad', `${data.porcentaje_alertas_calidad}%`],
+          ],
+        });
+      
+        // Tabla protocolo cumplido
+        let lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY ?? 80;
+        autoTable(doc, {
+          startY: lastY + 5,
+          head: [['Protocolo Cumplido', 'Cantidad']],
+          body: [
+            ['Sí', data.protocolo_cumplido.sí],
+            ['Parcial', data.protocolo_cumplido.parcial],
+            ['No', data.protocolo_cumplido.no],
+          ],
+        });
+      
+        // Listados
+        const simpleList = (title: string, items: string[] | undefined, yStart: number) => {
+          if (!items?.length) return;
+          doc.setFontSize(12);
+          doc.text(title, 14, yStart);
+          doc.setFontSize(10);
+          autoTable(doc, {
+            startY: yStart + 2,
+            head: [['Items']],
+            body: items.map((item) => [item]),
+          });
+        };
+      
+        lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY ?? 80;
+      
+        simpleList('Fortalezas', data.fortalezas_recurrentes, lastY + 5);
+        lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+        simpleList('Oportunidades de Mejora', data.oportunidades_mejora_recurrentes, lastY + 5);
+        lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+        simpleList('Temas Principales', data.temas_principales, lastY + 5);
+        lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+        simpleList('Palabras Clave Frecuentes', data.palabras_clave_frecuentes, lastY + 5);
+        lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+        simpleList('Alertas de Calidad Recurrentes', data.alertas_calidad_recurrentes, lastY + 5);
+        lastY = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
+        simpleList('Recomendaciones', data.recomendaciones, lastY + 15);
+        lastY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? lastY;
 
-}
+        // Resumen ejecutivo
+        doc.setFontSize(12);
+        doc.text('Resumen Ejecutivo:', 14, lastY + 16);
+        doc.setFontSize(10);
+        doc.text(doc.splitTextToSize(data.resumen_ejecutivo, 180), 14, lastY + 20);
+      
+        // Guardar PDF
+        doc.save(`Analisis_${data.nombre_empleado}_${new Date(data.DateTime_realizado).toISOString()}.pdf`);
+      }
 
 
 
 const DashboardPerfomance= ()=> {
-  const [modo, setModo] = useState<"area" | "agente" | null>(null);
+  const [modo, setModo] = useState<"area" | "agente" | null>("area");
   const [nombre, setNombre] = useState("");
   const [ClientePerformance, setClientePerformance] = useState<ClienteResponsePerformance | null>(null);
   const [AgentePerformance, setAgentePerformance] = useState<AgenteResponsePerformance | null>(null);
-
+  const [ErrorMessage,setErrorMessage] = useState("")
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaFin, setFechaFin] = useState("");
   const [loading,setLoading]= useState(false)
@@ -130,12 +207,11 @@ const DashboardPerfomance= ()=> {
             ff
         )
         setAgentePerformance(data);
-        console.log(data)
         }
 
-    } catch (error) {
-      console.error('Error al buscar llamadas:', error);
-    } finally {
+    }catch (err: any) {
+        setErrorMessage(err.message); // mostrar mensaje al usuario
+      } finally {
       setLoading(false);
     }
   };
@@ -143,10 +219,10 @@ const DashboardPerfomance= ()=> {
 
   return (
     <div className="w-full min-h-screen p-4">
-      <h1 className="text-xl font-bold mb-4">🔍 Seleccione qué desea analizar</h1>
-
+    <div className="bg-white p-4 rounded shadow ">
+        <h1 className="text-xl font-bold mb-4">🔍 Seleccione qué desea analizar</h1>
     {/* Sección de botones: selector de modo + acciones */}
-    <div className="flex flex-wrap items-center justify-between mb-6">
+    <div className="flex flex-wrap items-center justify-between mb-3">
   {/* Selector de Modo (izquierda) */}
   <div className="flex gap-4">
     <button
@@ -170,9 +246,9 @@ const DashboardPerfomance= ()=> {
         className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
         onClick={() => {
           if (modo === "area") {
-            navigate("/registros-area");
+            navigate("/dashboard/Performance/HistorialCliente");
           } else {
-            navigate("/registros-agente");
+            navigate("/dashboard/Performance/HistorialAgente");
           }
         }}
       >
@@ -203,7 +279,6 @@ const DashboardPerfomance= ()=> {
     
   </div>
     </div>
-
       {modo && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-6">
           <div className="col-span-1">
@@ -243,6 +318,8 @@ const DashboardPerfomance= ()=> {
           </button>
         </div>
       )}
+    </div>
+
       {!loading && modo=='area' && ClientePerformance && (
         <div className="mt-6 p-4 bg-white shadow rounded">
             <h2 className="text-xl font-bold mb-2">📊 Resultado del análisis</h2>
@@ -400,6 +477,9 @@ const DashboardPerfomance= ()=> {
                     <p className="mt-2 text-blue-600 font-semibold">Cargando datos...</p>
                 </div>
             </div>)}
+        {ErrorMessage !='' && (
+                    <p>{ErrorMessage}</p>
+        )}
     </div>
   );
 }
