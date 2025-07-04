@@ -2,22 +2,7 @@ import { useParams } from 'react-router-dom';
 import { JSX, useEffect, useState } from 'react';
 import { CallAnalysis } from '../types/AudiosMetadata';
 import { CallService } from '../services/AudioMetadataService';
-import { Phone, User, Mic, AlertCircle, MessageCircle } from 'lucide-react';
-
-const formatDateTime = (dateString: string): string => {
-  const date = new Date(dateString);
-  return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-};
-
-const calcularDuracion = (inicio: string, fin: string): string => {
-  const start = new Date(inicio).getTime();
-  const end = new Date(fin).getTime();
-  const diffMs = end - start;
-
-  const minutes = Math.floor(diffMs / 60000);
-  const seconds = Math.floor((diffMs % 60000) / 1000);
-  return `${minutes}m ${seconds}s`;
-};
+import { useNavigate } from 'react-router-dom';
 
 interface ListSectionProps {
   title: string;
@@ -47,6 +32,7 @@ const ReporteriaID = () => {
   const { id } = useParams<{ id: string }>();
   const [call, setCall] = useState<CallAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
+  const navigate=useNavigate()
 
   useEffect(() => {
     const fetchData = async () => {
@@ -67,19 +53,45 @@ const ReporteriaID = () => {
   if (!call) return <div className="p-6">No se encontró información.</div>;
 
   return (
-<div className="w-full min-h-screen bg-gray-100 p-4">
-  <h1 className="text-xl font-bold text-gray-800 mb-4">
-    Detalle de Llamada #{call.CallId}
-  </h1>
+    <div className="flex flex-col min-h-screen p-2 gap-2">
+      <div className="flex items-center justify-between ">
+      <button
+        onClick={() => navigate(-1)}
+        className=" px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm text-gray-700"
+      >
+        ← Volver
+      </button>
+        <h1 className="lg:text-xl md:text-base font-bold text-gray-800">
+          Detalle de Llamada #{call.CallId}
+        </h1>
+
+  {/* 
+  Transcripción 
+  <div className="bg-white rounded-xl shadow p-4 mb-4">
+        <h2 className="text-blue-700 font-medium text-sm mb-2 flex items-center gap-1">
+          🎙️ Transcripción de la llamada
+        </h2>
+        <div className="bg-gray-100 border rounded p-3 overflow-y-auto max-h-[30vh] text-xs whitespace-pre-wrap">
+          {call.TRANSCRIPCION}
+        </div>
+      </div>
+*/}
+        {call?.audio_file && (
+          <audio controls className="w-64">
+            <source src={`http://10.245.230.54:8001/audio/${call.audio_file}`} type="audio/mpeg" />
+            Tu navegador no soporta el audio.
+          </audio>
+        )}
+      </div>
 
   {/* Resumen y Observaciones */}
-  <div className="bg-white rounded-xl shadow p-4 mb-4 text-sm w-full">
-    <h2 className="text-blue-700 font-semibold text-base mb-2">
-      📝 Resumen y Observaciones
-    </h2>
-    <p className="mb-2"><strong>Resumen:</strong> {call.ANALISIS_LLM?.resumen}</p>
-    <p><strong>Observaciones:</strong> {call.ANALISIS_LLM?.observaciones_llm}</p>
-  </div>
+      <div className=" p-1">
+        <h2 className="text-blue-700 font-semibold text-base mb-1 lex items-center gap-1">
+          📝 Resumen y Observaciones
+        </h2>
+        <p className="mb-1 text-xs"><strong>Resumen:</strong> {call.ANALISIS_LLM?.resumen}</p>
+        <p className="text-xs"><strong>Observaciones:</strong> {call.ANALISIS_LLM?.observaciones_llm}</p>
+      </div>
 
 {/* Transcripción */}
 <div className="bg-white rounded-xl shadow p-3 mb-4 text-sm w-full">

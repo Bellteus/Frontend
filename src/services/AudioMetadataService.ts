@@ -2,7 +2,7 @@ import api from "./Api";
 import {  CallAnalysis } from "../types/AudiosMetadata";
 
 export const CallService = {
-    async getAllCalls(fechainicio:string,FechaHoraFin:string,cliente:string,NombreArea:string,IdEmpleado:string): Promise<CallAnalysis[]> {
+    async getAllCalls(fechainicio:string,FechaHoraFin:string,cliente:string,NombreArea:string,IdEmpleado:string,NombreEmpleado:string): Promise<CallAnalysis[]> {
     //usar params
         const params = new URLSearchParams();
         if (fechainicio) {
@@ -19,6 +19,9 @@ export const CallService = {
         }
         if (IdEmpleado) {
             params.append('IdEmpleado', IdEmpleado);
+        }
+        if(NombreEmpleado){
+            params.append('NombreEmpleado',NombreEmpleado)
         }
         const response = await api.get<CallAnalysis[]>('/audios/buscar', {
             params, // 👈 Esta es la forma correcta de pasar los parámetros con axios

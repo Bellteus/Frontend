@@ -179,8 +179,8 @@ const DashboardPerfomance= ()=> {
   const [fechaFin, setFechaFin] = useState("");
   const [loading,setLoading]= useState(false)
   const navigate = useNavigate();
-
-
+  const agentes=['NATURA ARGENTINA', 'NATURA PERÃš', 'NATURA COLOMBIA', 'NATURA COLOMBIA CND', 'NATURA PERÃš CND', 'NATURA MEXICO']
+  const empleados=['#N/D', 'CUADRADO NAVARRO ROXANA CINTHIA', 'AGURTO YATACO', 'CORDOVA OJEDA VALERIA MICOL', 'CARRANZA FLORES DIANA CINTHYA', 'SEGURA TUMEZ JAQUELINE ESMELID', 'RODRIGUEZ TAIPE ENRIQUE DIEGO', 'RAMOS GARCIA KEILA LIZETH', 'VELAZCO YAMUNAQUE ALEJANDRA NICOLL', ' ACOSTA MILAGROS DUMELIS', 'CASTAÃ‘EDA RODAS JUAN EMMANUEL', 'RODRIGUEZ PRADO FERNANDO JESUS', 'QUINTANA GARCIA ALESSANDRA GABRIELA', 'CABELLO COTERA ELIM MANUELA', 'MURAYARI JABA JIN KEVIN', 'ROIG CALLIRGOS FIORELLA', 'SALAZAR PACHERRES VICTOR JESUS', 'YZACOPE VEGA PATRICIA INES', 'RAMOS CURASMA JESSICA ALICIA', 'MEZA ACHO MELVILEY', 'MORAN PALOMINO DIANA HELEN', 'QUISPE RODRIGUEZ CARLOS JESUS ENRIQUE']
 
  const handleBuscar = async () => {
     setLoading(true);
@@ -285,12 +285,40 @@ const DashboardPerfomance= ()=> {
             <label className="block text-sm font-medium">
               {modo === "area" ? "Nombre del Área" : "Nombre del Agente"}
             </label>
-            <input placeholder={modo === "area" ? "Nombre del Área" : "Nombre del Agente"}
-                          className="w-full border px-2 py-1 rounded"
-              type="text"
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-            />
+                      {modo === "area" ? (
+                <div>
+                  <label className="font-medium text-sm">Área</label>
+                  <select
+                    value={nombre}
+                    onChange={(e) => setNombre(e.target.value)}
+                    className="w-full border border-gray-300 rounded p-2"
+                  >
+                    <option value="">Todas</option>
+                    {agentes.map((agencia, idx) => (
+                      <option key={idx} value={agencia}>
+                        {agencia}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : modo === "agente" && (
+                <div>
+                  <label className="font-medium text-sm">Empleado</label>
+                  <select
+                    value={nombre}
+                    onChange={(e) => setNombre(e.target.value)}
+                    className="w-full border border-gray-300 rounded p-2"
+                  >
+                    <option value="">Todos</option>
+                    {empleados.map((empleado, idx) => (
+                      <option key={idx} value={empleado}>
+                        {empleado}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
           </div>
           <div>
             <label className="block text-sm font-medium">Fecha Inicio</label>

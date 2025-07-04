@@ -23,10 +23,10 @@ const Sidevbar: React.FC<{ collapsed: boolean; setCollapsed: (expanded: boolean)
 
   return (
     <aside
-      className={`bg-slate-50 transition-all duration-300 ease-in-out overflow-hidden
-        ${collapsed ? 'w-14' : 'w-56'} h-screen flex flex-col fixed `}
+      className={`bg-slate-50 transition-all duration-300 ease-in-out overflow-hidden text-sm
+        ${collapsed ? 'w-14' : 'w-42'} h-screen flex flex-col fixed `}
     >
-      <nav className="flex flex-col flex-grow overflow-y-auto">
+      <nav className="flex flex-col flex-grow ">
         {/* Botón de colapsar */}
         <button
           onClick={handleCollapsed}

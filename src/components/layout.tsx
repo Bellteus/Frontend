@@ -14,7 +14,7 @@ const Layout = () => {
       <main
         className={`
           flex-1 ml-14 transition-all duration-300 overflow-y-auto 
-          ${!collapsed ? 'ml-56' : 'ml-14'}
+          ${!collapsed ? 'ml-42' : 'ml-14'}
         `}
       >
         <Outlet />
