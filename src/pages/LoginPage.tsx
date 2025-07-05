@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { loginUser } from "../services/AuthService";
-import  { LoginCredentials } from "../types/AuthTypes";
+import  { DecodedToken, LoginCredentials } from "../types/AuthTypes";
 import { useNavigate } from 'react-router-dom';
+import {jwtDecode} from 'jwt-decode';
+
 const LoginForm: React.FC = () => {
     const navigate = useNavigate();
 
@@ -24,8 +26,12 @@ const LoginForm: React.FC = () => {
       alert(`Enviando login para: ${credentials.email}`);
       const response = await loginUser(credentials);
       localStorage.setItem("token", response.access_token);
-      alert("✅ Login exitoso");
-      // Aquí podrías redirigir al usuario a otra página, por ejemplo:
+      if (response) {
+        const user: DecodedToken = jwtDecode(localStorage.getItem("token") || "");
+        console.log("Usuario logueado:", user);
+        localStorage.setItem("id",user.id);
+        // Puedes mostrarlo en tu header o en la página
+      }
       navigate("/dashboard");
     } catch (err: any) {
       setError(err.detail || "Error al iniciar sesión");
@@ -82,3 +88,4 @@ const LoginForm: React.FC = () => {
 };
 
 export default LoginForm;
+

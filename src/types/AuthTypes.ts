@@ -13,3 +13,11 @@ export interface LoginCredentials {
     detail: string;
   }
   
+    export interface DecodedToken {
+    id: string;
+    email: string;
+    role: string;
+    is_active: boolean;
+    created_at: string;
+    exp: string;
+  }
