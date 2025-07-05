@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { ClientePerformanceService } from '../services/ClientePerformanceService';
 import { ClienteResponsePerformance } from '../types/ClientesPerformance';
 import { useNavigate } from 'react-router-dom';
+import apiService from '../services/DataService'; // ← importa tu servicio de logs
 
 const HistorialClientePerformance = () => {
   const [allReportsClientes, setAllReportsClientes] = useState<ClienteResponsePerformance[]>([]);
   const [loading, setLoading] = useState(true);
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
-  const navigate = useNavigate(); // 👈 hook de navegación
+  const navigate = useNavigate();
 
   const fetchReports = async () => {
     try {
@@ -36,7 +37,9 @@ const HistorialClientePerformance = () => {
     fetchReports();
   };
 
-  const handleDescargarPDF = (reporte: ClienteResponsePerformance) => {
+  // Descargar PDF + LOG
+  const handleDescargarPDF = async (reporte: ClienteResponsePerformance) => {
+    // Lógica de PDF (simple texto como placeholder, puedes cambiar por jsPDF/autotable si quieres)
     const contenido = `
       Cliente: ${reporte.cliente}
       Número de llamadas: ${reporte.numero_llamadas}
@@ -53,6 +56,31 @@ const HistorialClientePerformance = () => {
     a.download = `Reporte_${reporte.cliente || 'cliente'}.pdf`;
     a.click();
     URL.revokeObjectURL(url);
+
+    // LOG al descargar PDF
+    const user_id = localStorage.getItem("id");
+    const user_email = localStorage.getItem("email");
+    if (user_id && user_email) {
+      await apiService.postSupervisorLog({
+        user_id,
+        user_email,
+        action: `Descargó reporte PDF de área "${reporte.cliente}"`
+      });
+    }
+  };
+
+  // Botón regresar + LOG
+  const handleRegresar = async () => {
+    const user_id = localStorage.getItem("id");
+    const user_email = localStorage.getItem("email");
+    if (user_id && user_email) {
+      await apiService.postSupervisorLog({
+        user_id,
+        user_email,
+        action: "Regresó desde historial de reportes por área"
+      });
+    }
+    navigate(-1);
   };
 
   return (
@@ -60,7 +88,7 @@ const HistorialClientePerformance = () => {
   {/* Header */}
   <div className="flex items-center justify-between mb-6">
     <button
-      onClick={() => navigate(-1)}
+      onClick={handleRegresar}
       className="bg-gray-300 hover:bg-gray-400 text-black px-4 py-2 rounded shadow"
     >
       ← Regresar

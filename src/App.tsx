@@ -8,6 +8,8 @@ import Reporteria from './pages/Reporteria'
 import ReporteriaID from './pages/reporteriaById'
 import DashboardPerfomance from './pages/DashboardPerfomance'
 import HistorialClientePerformance from './pages/HistorialClientePerformance'
+import LogsTable from './pages/Logs'
+import PerfilUsuario from './pages/Profile'
 function App() {
   return (
     // Definición de las rutas de la aplicación
@@ -20,9 +22,10 @@ function App() {
         <Route path="dashboard/Performance" element={<DashboardPerfomance/>}/>
         <Route path="dashboard/Performance/HistorialCliente" element={<HistorialClientePerformance/>}/>
         <Route path="dashboard/Performance/HistorialAgente" element={<DashboardPerfomance/>}/>
-
+        <Route path="auditoria" element={<LogsTable/>}/>
         <Route path="reporteria" element={<Reporteria />} />
         <Route path="/reporteria/:id" element={<ReporteriaID />} />
+        <Route path="/profile" element={<PerfilUsuario />} />
 
       </Route>
     </Routes>

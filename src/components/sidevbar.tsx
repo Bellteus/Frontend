@@ -5,11 +5,11 @@ import {
   FiChevronDown, FiChevronRight, FiLogOut, FiHome,
   FiUserPlus, FiUsers
 } from 'react-icons/fi';
+import apiService from '../services/DataService'; // <-- Agrega esto
 
 const Sidevbar: React.FC<{ collapsed: boolean; setCollapsed: (expanded: boolean) => void }> = ({
   collapsed, setCollapsed
 }) => {
-  const [administratorExpanded, setAdministratorExpanded] = useState(false);
   const [dashboardExpanded, setDashboardExpanded] = useState(false);
   const navigate = useNavigate();
 
@@ -17,8 +17,30 @@ const Sidevbar: React.FC<{ collapsed: boolean; setCollapsed: (expanded: boolean)
     setCollapsed(!collapsed);
   };
 
-  const handleLogout = () => {
+  // LOGOUT CON REGISTRO DE LOG
+  const handleLogout = async () => {
+    const user_id = localStorage.getItem("id");
+    const user_email = localStorage.getItem("email");
+    if (user_id && user_email) {
+      try {
+        await apiService.postSupervisorLog({
+          user_id,
+          user_email,
+          action: "Cerró sesión"
+        });
+        // Puedes dejar un console.log aquí si quieres
+        // console.log("Log de cierre de sesión registrado");
+      } catch (logError) {
+        // No bloquea el logout si falla el log
+        console.warn("No se pudo registrar log de cierre de sesión:", logError);
+      }
+    }
+    localStorage.clear();
     navigate('/login');
+  };
+
+  const handleGoToAuditoria = () => {
+    navigate('/auditoria'); // Cambia esta ruta si tu auditoría tiene otra URL
   };
 
   return (
@@ -104,58 +126,20 @@ const Sidevbar: React.FC<{ collapsed: boolean; setCollapsed: (expanded: boolean)
           </span>
         </NavLink>
 
-        {/* ADMINISTRACIÓN */}
-        <div>
-          <div
-            onClick={() => setAdministratorExpanded(!administratorExpanded)}
-            className="flex items-center p-3 cursor-pointer hover:bg-gray-200 transition-colors gap-2"
-          >
-            <FiArchive size={20} className="min-w-[20px]" />
-            <span className={`transition-all duration-300 ${collapsed ? 'opacity-0 w-0' : 'opacity-100 w-auto'}`}>
-              Administración
-            </span>
-            {!collapsed && (
-              <div className="ml-auto">
-                {administratorExpanded ? <FiChevronDown size={16} /> : <FiChevronRight size={16} />}
-              </div>
-            )}
-          </div>
-          <div
-            className={`overflow-hidden transition-all duration-300 ease-in-out
-              ${!collapsed && administratorExpanded ? 'max-h-32 opacity-100' : 'max-h-0 opacity-0'}`}
-          >
-            {!collapsed && administratorExpanded && (
-              <div className="ml-8 mt-1 space-y-1">
-                <NavLink
-                  to="Administracion/usuarios"
-                  className={({ isActive }) =>
-                    `flex items-center gap-2 p-2 hover:bg-gray-200 text-xs ${
-                      isActive ? 'bg-gray-200 font-medium' : ''
-                    }`
-                  }
-                >
-                  <FiUsers size={20} className="min-w-[20px]" />
-                  <span>Usuarios</span>
-                </NavLink>
-                <NavLink
-                  to="Administracion/perfiles"
-                  className={({ isActive }) =>
-                    `flex items-center gap-2 p-2 hover:bg-gray-200 text-xs ${
-                      isActive ? 'bg-gray-200 font-medium' : ''
-                    }`
-                  }
-                >
-                  <FiUserPlus size={20} className="min-w-[20px]" />
-                  <span>Perfiles</span>
-                </NavLink>
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Auditoría - SIN desplegable, va directo */}
+        <button
+          onClick={handleGoToAuditoria}
+          className="flex items-center gap-2 p-3 hover:bg-gray-200 transition-colors text-left w-full"
+        >
+          <FiArchive size={20} className="min-w-[20px]" />
+          <span className={`transition-all duration-300 ${collapsed ? 'opacity-0 w-0' : 'opacity-100 w-auto'}`}>
+            Auditoría
+          </span>
+        </button>
 
         {/* Perfil */}
         <NavLink
-          to="/perfil"
+          to="/profile"
           className={({ isActive }) =>
             `flex items-center gap-2 p-3 hover:bg-gray-100 transition-colors ${
               isActive ? 'bg-gray-200 font-medium' : ''

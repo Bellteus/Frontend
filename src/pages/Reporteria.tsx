@@ -58,8 +58,7 @@ const CallSearchTable: React.FC = () => {
     setError(null);
 
     // Armar acción del Log
-    const user_id = localStorage.getItem("id");
-    const user_email = localStorage.getItem("email");
+
     let action = `Se ha buscado llamadas entre ${fechaInicio || '---'} y ${fechaFin || '---'}`;
     if (nombreArea) action += ` | Área: ${nombreArea}`;
     if (idEmpleado) action += ` | ID Empleado: ${idEmpleado}`;
@@ -67,7 +66,11 @@ const CallSearchTable: React.FC = () => {
     if (cliente) action += ` | Agencia: ${cliente}`;
 
     try {
-      // 1. Primero, registrar el Log
+    const user_id = localStorage.getItem("id");
+    const user_email = localStorage.getItem("email");
+      console.log( "Id", user_id)
+        console.log( "email", user_email)
+
       if (user_id && user_email) {
         await apiService.postSupervisorLog({
           user_id,
