@@ -10,7 +10,7 @@ import api from "./Api"; // Asegúrate que tienes una instancia Axios configurad
 
 
 // @ts-ignore
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8002";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8001";
 
 // ================== AUDIOS ==================
 
@@ -84,7 +84,26 @@ export const postReporteAnalisisAgente = async (params: {
 };
 
 
+export const getSupervisorLogs = async () => {
+  const response = await api.get('/logs');
+  return response.data;
+};
 
+// Crear un nuevo log
+export const postSupervisorLog = async (log: {
+  user_id: string;
+  user_email: string;
+  action: string;
+}) => {
+  const response = await api.post('/logs', log);
+  return response.data;
+};
+
+// Obtener logs filtrados por usuario
+export const getSupervisorLogsByUser = async (user_id: string) => {
+  const response = await api.get('/logs', { params: { user_id } });
+  return response.data;
+};
 
 // ================== EXPORTS ==================
 
@@ -95,4 +114,7 @@ export default {
   postReporteAnalisisArea,
   getReporteAnalisisAgente,
   postReporteAnalisisAgente,
+  getSupervisorLogs,
+  postSupervisorLog,
+  getSupervisorLogsByUser,
 };

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { CallAnalysis } from '../types/AudiosMetadata';
 import { CallService } from '../services/AudioMetadataService';
+import apiService from '../services/DataService';
 import { useNavigate } from 'react-router-dom';
 
 const formatDateToDMY = (dateStr: string): string => {
@@ -37,6 +38,7 @@ const calcularDuracion = (inicio: string, fin: string): string => {
 const CallSearchTable: React.FC = () => {
   const [calls, setCalls] = useState<CallAnalysis[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
@@ -44,34 +46,57 @@ const CallSearchTable: React.FC = () => {
   const [cliente, setCliente] = useState('');
   const [nombreArea, setNombreArea] = useState('');
   const [idEmpleado, setIdEmpleado] = useState('');
-  const [NombreEmpleado,setnombreEmpleado] = useState('')
+  const [NombreEmpleado, setnombreEmpleado] = useState('');
   const [filtroActivo, setFiltroActivo] = useState(false);
-  const [ArrayIds,setArrayIds] = useState<string[]>([])
-  const [ArrayAgencias,setArrayAgencias] = useState<string[]>([])
-  const [ArrayArea,setArrayArea] = useState<string[]>([])
-  const [ArrayEmpleados,setArrayEmpleados] = useState<string[]>([])
+  const [ArrayIds, setArrayIds] = useState<string[]>([]);
+  const [ArrayAgencias, setArrayAgencias] = useState<string[]>([]);
+  const [ArrayArea, setArrayArea] = useState<string[]>([]);
+  const [ArrayEmpleados, setArrayEmpleados] = useState<string[]>([]);
 
   const buscarLlamadas = async () => {
     setLoading(true);
+    setError(null);
+
+    // Armar acción del Log
+    const user_id = localStorage.getItem("id");
+    const user_email = localStorage.getItem("email");
+    let action = `Se ha buscado llamadas entre ${fechaInicio || '---'} y ${fechaFin || '---'}`;
+    if (nombreArea) action += ` | Área: ${nombreArea}`;
+    if (idEmpleado) action += ` | ID Empleado: ${idEmpleado}`;
+    if (NombreEmpleado) action += ` | Empleado: ${NombreEmpleado}`;
+    if (cliente) action += ` | Agencia: ${cliente}`;
+
     try {
+      // 1. Primero, registrar el Log
+      if (user_id && user_email) {
+        await apiService.postSupervisorLog({
+          user_id,
+          user_email,
+          action,
+        });
+        console.log("Log de búsqueda enviado:", { user_id, user_email, action });
+      }
+
+      // 2. Luego, hacer la búsqueda real
       const fi = fechaInicio ? formatDateToDMY(fechaInicio) : '';
       const ff = fechaFin ? formatDateToDMY(fechaFin) : '';
-      const data = await CallService.getAllCalls(fi, ff, cliente, nombreArea, idEmpleado,NombreEmpleado);
-      setCalls(data);
-          const idsUnicos = [...new Set(data.map((item) => item.IdEmpleado))];
-    const agenciasUnicas = [...new Set(data.map((item) => item.Cliente))];
-    const areasUnicas = [...new Set(data.map((item) => item.NombreArea))];
-    const empleadosUnicos = [...new Set(data.map((item) => item.NombreEmpleado))];
+      const data = await CallService.getAllCalls(fi, ff, cliente, nombreArea, idEmpleado, NombreEmpleado);
 
-    setArrayIds(idsUnicos);
-    setArrayAgencias(agenciasUnicas);
-    setArrayArea(areasUnicas);
-    setArrayEmpleados(empleadosUnicos);
-    console.log(agenciasUnicas)
-    console.log(empleadosUnicos)
+      setCalls(data);
+
+      const idsUnicos = [...new Set(data.map((item) => item.IdEmpleado))];
+      const agenciasUnicas = [...new Set(data.map((item) => item.Cliente))];
+      const areasUnicas = [...new Set(data.map((item) => item.NombreArea))];
+      const empleadosUnicos = [...new Set(data.map((item) => item.NombreEmpleado))];
+
+      setArrayIds(idsUnicos);
+      setArrayAgencias(agenciasUnicas);
+      setArrayArea(areasUnicas);
+      setArrayEmpleados(empleadosUnicos);
       setFiltroActivo(true);
-    } catch (error) {
-      console.error('Error al buscar llamadas:', error);
+    } catch (err: any) {
+      setError('Error al buscar llamadas o registrar el log');
+      console.error('Error:', err);
     } finally {
       setLoading(false);
     }
@@ -97,143 +122,143 @@ const CallSearchTable: React.FC = () => {
             </button>
           )}
         </div>
-{mostrarFiltros && (
-  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-    <div>
-      <label className="font-medium text-sm">Agencia</label>
-      <select
-        value={cliente}
-        onChange={(e) => setCliente(e.target.value)}
-        className="w-full border border-gray-300 rounded p-2"
-      >
-        <option value="">Todas</option>
-        {ArrayAgencias.map((agencia, idx) => (
-          <option key={idx} value={agencia}>{agencia}</option>
-        ))}
-      </select>
-    </div>
-
-    <div>
-      <label className="font-medium text-sm">Área</label>
-      <select
-        value={nombreArea}
-        onChange={(e) => setNombreArea(e.target.value)}
-        className="w-full border border-gray-300 rounded p-2"
-      >
-        <option value="">Todas</option>
-        {ArrayArea.map((area, idx) => (
-          <option key={idx} value={area}>{area}</option>
-        ))}
-      </select>
-    </div>
-
-    <div>
-      <label className="font-medium text-sm">ID Empleado</label>
-      <select
-        value={idEmpleado}
-        onChange={(e) => setIdEmpleado(e.target.value)}
-        className="w-full border border-gray-300 rounded p-2"
-      >
-        <option value="">Todos</option>
-        {ArrayIds.map((id, idx) => (
-          <option key={idx} value={id}>{id}</option>
-        ))}
-      </select>
-    </div>
-
-    <div>
-      <label className="font-medium text-sm">Nombre Empleado</label>
-      <select
-        value={NombreEmpleado}
-        onChange={(e) => setnombreEmpleado(e.target.value)}
-        className="w-full border border-gray-300 rounded p-2"
-      >
-        <option value="">Todos</option>
-        {ArrayEmpleados.map((empleado, idx) => (
-          <option key={idx} value={empleado}>{empleado}</option>
-        ))}
-      </select>
-    </div>
-  </div>
-)}
-
+        {mostrarFiltros && (
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="font-medium text-sm">Agencia</label>
+              <select
+                value={cliente}
+                onChange={(e) => setCliente(e.target.value)}
+                className="w-full border border-gray-300 rounded p-2"
+              >
+                <option value="">Todas</option>
+                {ArrayAgencias.map((agencia, idx) => (
+                  <option key={idx} value={agencia}>{agencia}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="font-medium text-sm">Área</label>
+              <select
+                value={nombreArea}
+                onChange={(e) => setNombreArea(e.target.value)}
+                className="w-full border border-gray-300 rounded p-2"
+              >
+                <option value="">Todas</option>
+                {ArrayArea.map((area, idx) => (
+                  <option key={idx} value={area}>{area}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="font-medium text-sm">ID Empleado</label>
+              <select
+                value={idEmpleado}
+                onChange={(e) => setIdEmpleado(e.target.value)}
+                className="w-full border border-gray-300 rounded p-2"
+              >
+                <option value="">Todos</option>
+                {ArrayIds.map((id, idx) => (
+                  <option key={idx} value={id}>{id}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="font-medium text-sm">Nombre Empleado</label>
+              <select
+                value={NombreEmpleado}
+                onChange={(e) => setnombreEmpleado(e.target.value)}
+                className="w-full border border-gray-300 rounded p-2"
+              >
+                <option value="">Todos</option>
+                {ArrayEmpleados.map((empleado, idx) => (
+                  <option key={idx} value={empleado}>{empleado}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
-        {loading && (
-        <div className="bg-white  rounded-xl shadow-md flex-1 overflow-auto">
+      {error && (
+        <div className="bg-red-100 text-red-700 p-3 rounded mb-2 text-center">{error}</div>
+      )}
+
+      {loading && (
+        <div className="bg-white rounded-xl shadow-md flex-1 overflow-auto">
           <div className="flex items-center justify-center h-full">
             <div className="flex flex-col items-center">
               <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
               <p className="mt-2 text-blue-600 font-medium text-center">Cargando datos...</p>
             </div>
           </div>
-          </div>
-        )}
-        { !loading && calls.length > 0 && (
-      <div className="overflow-auto h-min-[500px]">
-      <table className=" w-full text-sm lg:text-xs text-center whitespace-nowrap">
-        <thead className="sticky top-0 bg-gray-100 z-10 text-left">
-          <tr>
-            <th className="p-2 text-gray-600 font-medium text-center">Call ID</th>
-            <th className="p-2 text-gray-600 font-medium text-center">Hora Inicio</th>
-            <th className="p-2 text-gray-600 font-medium text-center">Hora Fin</th>
-            <th className="p-2 text-gray-600 font-medium text-center">Duración</th>
-            <th className="p-2 text-gray-600 font-medium text-center">N° Destino</th>
-            <th className="p-2 text-gray-600 font-medium text-center">Agencia</th>
-            <th className="p-2 text-gray-600 font-medium text-center">ID Empleado</th>
-            <th className="p-2 text-gray-600 font-medium text-center">Empleado</th>
-            <th className="p-2 text-gray-600 font-medium text-center">Área</th>
-            <th className="p-2 text-gray-600 font-medium text-center">Complejidad</th>
-            <th className="p-2 text-gray-600 font-medium text-center">Escalado</th>
-            <th className="p-2 text-gray-600 font-medium text-center">Sent. Inicial</th>
-            <th className="p-2 text-gray-600 font-medium text-center">Sent. Final</th>
-            <th className="p-2 text-gray-600 font-medium text-center">Tópicos</th>
-            <th className="p-2 text-gray-600 font-medium text-center">Resolución</th>
-          </tr>
-        </thead>
-        <tbody>
-          {calls.map((call) => (
-            <tr
-              key={call.CallId}
-              className="border-b border-gray-200 hover:bg-gray-50 transition"
-              onClick={() => navigate(`/reporteria/${call.CallId}`)}
-            >
-              <td className="p-1">{call.CallId}</td>
-              <td className="p-1">{formatDateTime(call.FechaHoraInicio)}</td>
-              <td className="p-1">{formatDateTime(call.FechaHoraFin)}</td>
-              <td className="p-1">{calcularDuracion(call.FechaHoraInicio, call.FechaHoraFin)}</td>
-              <td className="p-1">{call.ANI}</td>
-              <td className="p-1">{call.Cliente}</td>
-              <td className="p-1">{call.IdEmpleado}</td>
-              <td className="p-1">{call.NombreEmpleado}</td>
-              <td className="p-1">{call.NombreArea}</td>
-              <td className="p-1">{call.ANALISIS_LLM.complejidad_caso}</td>
-              <td className="p-1">{call.ANALISIS_LLM.escalado}</td>
-              <td className="p-1">{call.ANALISIS_LLM.sentimiento_inicio}</td>
-              <td className="p-1">{call.ANALISIS_LLM.sentimiento_fin}</td>
-              <td className="p-1 text-left">
-                <ul className="list-disc list-inside">
-                  {call.ANALISIS_LLM.topicos_principales.map((topico, i) => (
-                    <li key={i}>{topico}</li>
-                  ))}
-                </ul>
-              </td>
-              <td className="p-1 text-left">{call.ANALISIS_LLM.caso_resuelto}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-)}
+        </div>
+      )}
 
-        {!loading && calls.length === 0 && (
-          <div className="bg-white  rounded-xl shadow-md flex-1 overflow-auto">
+      {!loading && calls.length > 0 && (
+        <div className="overflow-auto h-min-[500px]">
+          <table className="w-full text-sm lg:text-xs text-center whitespace-nowrap">
+            <thead className="sticky top-0 bg-gray-100 z-10 text-left">
+              <tr>
+                <th className="p-2 text-gray-600 font-medium text-center">Call ID</th>
+                <th className="p-2 text-gray-600 font-medium text-center">Hora Inicio</th>
+                <th className="p-2 text-gray-600 font-medium text-center">Hora Fin</th>
+                <th className="p-2 text-gray-600 font-medium text-center">Duración</th>
+                <th className="p-2 text-gray-600 font-medium text-center">N° Destino</th>
+                <th className="p-2 text-gray-600 font-medium text-center">Agencia</th>
+                <th className="p-2 text-gray-600 font-medium text-center">ID Empleado</th>
+                <th className="p-2 text-gray-600 font-medium text-center">Empleado</th>
+                <th className="p-2 text-gray-600 font-medium text-center">Área</th>
+                <th className="p-2 text-gray-600 font-medium text-center">Complejidad</th>
+                <th className="p-2 text-gray-600 font-medium text-center">Escalado</th>
+                <th className="p-2 text-gray-600 font-medium text-center">Sent. Inicial</th>
+                <th className="p-2 text-gray-600 font-medium text-center">Sent. Final</th>
+                <th className="p-2 text-gray-600 font-medium text-center">Tópicos</th>
+                <th className="p-2 text-gray-600 font-medium text-center">Resolución</th>
+              </tr>
+            </thead>
+            <tbody>
+              {calls.map((call) => (
+                <tr
+                  key={call.CallId}
+                  className="border-b border-gray-200 hover:bg-gray-50 transition"
+                  onClick={() => navigate(`/reporteria/${call.CallId}`)}
+                >
+                  <td className="p-1">{call.CallId}</td>
+                  <td className="p-1">{formatDateTime(call.FechaHoraInicio)}</td>
+                  <td className="p-1">{formatDateTime(call.FechaHoraFin)}</td>
+                  <td className="p-1">{calcularDuracion(call.FechaHoraInicio, call.FechaHoraFin)}</td>
+                  <td className="p-1">{call.ANI}</td>
+                  <td className="p-1">{call.Cliente}</td>
+                  <td className="p-1">{call.IdEmpleado}</td>
+                  <td className="p-1">{call.NombreEmpleado}</td>
+                  <td className="p-1">{call.NombreArea}</td>
+                  <td className="p-1">{call.ANALISIS_LLM.complejidad_caso}</td>
+                  <td className="p-1">{call.ANALISIS_LLM.escalado}</td>
+                  <td className="p-1">{call.ANALISIS_LLM.sentimiento_inicio}</td>
+                  <td className="p-1">{call.ANALISIS_LLM.sentimiento_fin}</td>
+                  <td className="p-1 text-left">
+                    <ul className="list-disc list-inside">
+                      {call.ANALISIS_LLM.topicos_principales.map((topico, i) => (
+                        <li key={i}>{topico}</li>
+                      ))}
+                    </ul>
+                  </td>
+                  <td className="p-1 text-left">{call.ANALISIS_LLM.caso_resuelto}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {!loading && calls.length === 0 && (
+        <div className="bg-white rounded-xl shadow-md flex-1 overflow-auto">
           <div className="flex items-center justify-center h-full">
             <h1 className="text-center text-lg text-gray-500">No hay datos para mostrar</h1>
           </div>
-          </div>
-
-        )}
+        </div>
+      )}
     </div>
   );
 };

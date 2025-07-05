@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { loginUser } from "../services/AuthService";
 import  { DecodedToken, LoginCredentials } from "../types/AuthTypes";
 import { useNavigate } from 'react-router-dom';
-import {jwtDecode} from 'jwt-decode';
+import { jwtDecode } from 'jwt-decode';
+import apiService from '../services/DataService';
 
 const LoginForm: React.FC = () => {
     const navigate = useNavigate();
@@ -19,24 +20,39 @@ const LoginForm: React.FC = () => {
     setCredentials(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    try {
-      alert(`Enviando login para: ${credentials.email}`);
-      const response = await loginUser(credentials);
-      localStorage.setItem("token", response.access_token);
-      if (response) {
-        const user: DecodedToken = jwtDecode(localStorage.getItem("token") || "");
-        console.log("Usuario logueado:", user);
-        localStorage.setItem("id",user.id);
-        // Puedes mostrarlo en tu header o en la página
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError(null);
+  try {
+    // alert(`Enviando login para: ${credentials.email}`);
+    const response = await loginUser(credentials);
+    localStorage.setItem("token", response.access_token);
+    if (response) {
+      const user: DecodedToken = jwtDecode(localStorage.getItem("token") || "");
+      
+      // ⬇️ Añadido: log de toda la data del usuario
+      console.log("Usuario decodificado (JWT):", user);
+
+      localStorage.setItem("id", user.id);
+      localStorage.setItem("email", user.email);
+      // REGISTRO DE LOG DE INICIO DE SESIÓN
+      try {
+        await apiService.postSupervisorLog({
+          user_id: user.id,
+          user_email: user.email,
+          action: "Inició sesión"
+        });
+      } catch (logError) {
+        // Opcional: puedes notificar error de log, pero NO bloquear login si falla el log
+        console.warn("No se pudo registrar log de inicio de sesión:", logError);
       }
-      navigate("/dashboard");
-    } catch (err: any) {
-      setError(err.detail || "Error al iniciar sesión");
     }
-  };
+    navigate("/dashboard");
+  } catch (err: any) {
+    setError(err.detail || "Error al iniciar sesión");
+  }
+};
+
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -88,4 +104,3 @@ const LoginForm: React.FC = () => {
 };
 
 export default LoginForm;
-
