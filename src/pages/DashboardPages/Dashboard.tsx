@@ -12,11 +12,12 @@ import {
   Legend,
   Title
 } from 'chart.js';
+import { useNavigate, useLocation } from 'react-router-dom';
 
-import { AudioWithAnalysis } from '../types/AnalysisAudio';
-import { ClienteReporte } from '../types/ClientReport';
-import { EmpleadoReporte } from '../types/AgentReport';
-import apiService from '../services/DataService';
+import { AudioWithAnalysis } from '../../types/AnalysisAudio';
+import { ClienteReporte } from '../../types/ClientReport';
+import { EmpleadoReporte } from '../../types/AgentReport';
+import apiService from '../../services/DataService';
 
 ChartJS.register(
   ArcElement,
@@ -42,6 +43,13 @@ function toPercent(val: number | null | undefined) {
   return 0;
 }
 
+function formatDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+const DEFAULT_START_DATE = "2025-05-01";
+const DEFAULT_END_DATE = "2025-05-31";
+
 const Dashboard: React.FC = () => {
   const [audios, setAudios] = useState<AudioWithAnalysis[]>([]);
   const [clientes, setClientes] = useState<ClienteReporte[]>([]);
@@ -52,18 +60,49 @@ const Dashboard: React.FC = () => {
   const [showAllAgents, setShowAllAgents] = useState(false);
   const [showAllTMO, setShowAllTMO] = useState(false);
 
-  const startDate = "01-05-2025";
-  const endDate = "27-06-2025";
+  const [startDate, setStartDate] = useState<string>(DEFAULT_START_DATE);
+  const [endDate, setEndDate] = useState<string>(DEFAULT_END_DATE);
+
+  // Usar router para navegación entre dashboards
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Detecta qué vista mostrar según la ruta
+  const currentOption = location.pathname.includes('/agente')
+    ? 'agente'
+    : location.pathname.includes('/area')
+    ? 'area'
+    : 'general';
+
+  // Maneja el cambio del select
+  const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    if (value === 'general') {
+      navigate('/dashboard');
+    } else if (value === 'area') {
+      navigate('/dashboard/area');
+    } else if (value === 'agente') {
+      navigate('/dashboard/agente');
+    }
+  };
+
+  function apiDate(str: string) {
+    if (!str) return '';
+    const [y, m, d] = str.split('-');
+    return `${d}-${m}-${y}`;
+  }
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       setError(null);
       try {
+        const sDate = apiDate(startDate);
+        const eDate = apiDate(endDate);
         const [audiosRes, clientesRes, empleadosRes] = await Promise.all([
-          apiService.buscarAudios({ FechaHoraInicio: startDate, fechafin: endDate }),
-          apiService.getReporteriaAudios({ FechaHoraInicio: startDate, fechafin: endDate }),
-          apiService.getReporteAnalisisAgente({ Agente: '', fecha_inicio: startDate, fecha_fin: endDate }),
+          apiService.buscarAudios({ FechaHoraInicio: sDate, fechafin: eDate }),
+          apiService.getReporteriaAudios({ FechaHoraInicio: sDate, fechafin: eDate }),
+          apiService.getReporteAnalisisAgente({ Agente: '', fecha_inicio: sDate, fecha_fin: eDate }),
         ]);
         setAudios(Array.isArray(audiosRes) ? audiosRes : []);
         setClientes(Array.isArray(clientesRes) ? clientesRes : []);
@@ -74,8 +113,9 @@ const Dashboard: React.FC = () => {
       setLoading(false);
     }
     fetchData();
-  }, []);
+  }, [startDate, endDate, currentOption]);
 
+  // ------ Dashboard Data Logic (igual que antes) ------
   const llamadasPorEmpleado: Record<string, AudioWithAnalysis[]> = {};
   audios.forEach(a => {
     if (!llamadasPorEmpleado[a.IdEmpleado]) llamadasPorEmpleado[a.IdEmpleado] = [];
@@ -207,14 +247,56 @@ const Dashboard: React.FC = () => {
     }]
   };
 
+  // ------- Barra de filtro (select y fechas) -------
+  const FilterBar = (
+    <div className="flex flex-col md:flex-row md:items-end md:justify-between mb-8 mt-6">
+      <div className="flex items-center gap-3 bg-white p-3 rounded-lg shadow border border-[#e7eaf7]">
+        <label className="text-[#415088] font-semibold mr-2 text-sm">Vista:</label>
+        <select
+          value={currentOption}
+          onChange={handleSelectChange}
+          className="border border-blue-400 rounded px-2 py-1 bg-white text-[#294097] focus:outline-none"
+        >
+          <option value="general">General</option>
+          <option value="area">Área</option>
+          <option value="agente">Agente</option>
+        </select>
+        <label className="text-[#415088] font-semibold ml-4 mr-1 text-sm">Desde:</label>
+        <input
+          type="date"
+          className="border border-blue-400 rounded px-2 py-1 bg-white text-[#294097] focus:outline-none"
+          value={startDate}
+          max={endDate}
+          onChange={e => setStartDate(e.target.value)}
+        />
+        <label className="text-[#415088] font-semibold mx-1 text-sm">Hasta:</label>
+        <input
+          type="date"
+          className="border border-blue-400 rounded px-2 py-1 bg-white text-[#294097] focus:outline-none"
+          value={endDate}
+          min={startDate}
+          max={formatDate(new Date())}
+          onChange={e => setEndDate(e.target.value)}
+        />
+      </div>
+    </div>
+  );
+
+  // --- Loading/error con filtro siempre visible ---
   if (loading) return (
-    <div className="min-h-screen w-screen bg-[#f8f9ff] flex items-center justify-center">
-      <div className="p-16 text-center text-lg font-medium">Cargando datos...</div>
+    <div className="min-h-screen w-full bg-[#f8f9ff] font-inter px-2 sm:px-4 md:px-8 lg:px-12 xl:px-16 2xl:px-24 py-3 flex flex-col min-h-screen">
+      {FilterBar}
+      <div className="flex-1 flex items-center justify-center mt-8">
+        <div className="p-16 text-center text-lg font-medium">Cargando datos...</div>
+      </div>
     </div>
   );
   if (error) return (
-    <div className="min-h-screen w-screen bg-[#f8f9ff] flex items-center justify-center">
-      <div className="p-8 text-red-700 text-lg font-semibold">Error: {error}</div>
+    <div className="min-h-screen w-full bg-[#f8f9ff] font-inter px-2 sm:px-4 md:px-8 lg:px-12 xl:px-16 2xl:px-24 py-3 flex flex-col min-h-screen">
+      {FilterBar}
+      <div className="flex-1 flex items-center justify-center mt-8">
+        <div className="p-8 text-red-700 text-lg font-semibold">{error}</div>
+      </div>
     </div>
   );
 
@@ -234,11 +316,14 @@ const Dashboard: React.FC = () => {
         flex flex-col
         min-h-screen
       ">
+        {FilterBar}
+
         {/* HEADER */}
-        <header className="text-left mb-0 pb-4">
-          <h1 className="text-[#2c3e8f] text-[2.1rem] font-extrabold mb-6 tracking-tight">
-            Analítica de Llamadas en Tiempo Real
-          </h1>
+        <header className="text-left mb-10 pb-4">
+        <h1 className="text-[#2c3e8f] text-[2.1rem] font-extrabold mb-6 tracking-tight text-center">
+          Analítica de Llamadas
+        </h1>
+
           <div className="
             grid
             grid-cols-1
@@ -247,7 +332,7 @@ const Dashboard: React.FC = () => {
             gap-4
             md:gap-6
             xl:gap-8
-            mb-0
+            mb-2
           ">
             {/* Stat cards */}
             <div className="bg-white p-7 rounded-[14px] shadow-md border border-[#edf0fa] text-left min-w-[120px] min-h-[90px] flex flex-col justify-start transition hover:shadow-lg">

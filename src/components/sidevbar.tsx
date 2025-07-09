@@ -18,26 +18,27 @@ const Sidevbar: React.FC<{ collapsed: boolean; setCollapsed: (expanded: boolean)
   };
 
   // LOGOUT CON REGISTRO DE LOG
-  const handleLogout = async () => {
-    const user_id = localStorage.getItem("id");
-    const user_email = localStorage.getItem("email");
-    if (user_id && user_email) {
-      try {
-        await apiService.postSupervisorLog({
-          user_id,
-          user_email,
-          action: "Cerró sesión"
-        });
-        // Puedes dejar un console.log aquí si quieres
-        // console.log("Log de cierre de sesión registrado");
-      } catch (logError) {
-        // No bloquea el logout si falla el log
-        console.warn("No se pudo registrar log de cierre de sesión:", logError);
-      }
+const handleLogout = async () => {
+  const user_id = localStorage.getItem("id");
+  const user_email = localStorage.getItem("email");
+  if (user_id && user_email) {
+    try {
+      await apiService.postSupervisorLog({
+        user_id,
+        user_email,
+        action: "Cerró sesión"
+      });
+      // console.log("Log de cierre de sesión registrado");
+    } catch (logError) {
+      console.warn("No se pudo registrar log de cierre de sesión:", logError);
     }
-    localStorage.clear();
-    navigate('/login');
-  };
+  }
+  // Solo borra lo necesario:
+  localStorage.removeItem("id");
+  localStorage.removeItem("email");
+  navigate('/login');
+};
+
 
   const handleGoToAuditoria = () => {
     navigate('/auditoria'); // Cambia esta ruta si tu auditoría tiene otra URL
