@@ -12,6 +12,7 @@ import PerfilUsuario from './pages/Profile'
 import DashboardArea from './pages/DashboardPages/DashboardArea'
 import DashboardAgente from './pages/DashboardPages/DashboardAgente'
 import PrivateRoute from './components/PrivateRoute'
+import HistorialAgentePerformance from './pages/HistorialAgentePerformance'
 
 function App() {
   return (
@@ -27,7 +28,7 @@ function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="dashboard/Performance" element={<DashboardPerfomance />} />
           <Route path="dashboard/Performance/HistorialCliente" element={<HistorialClientePerformance />} />
-          <Route path="dashboard/Performance/HistorialAgente" element={<DashboardPerfomance />} />
+          <Route path="dashboard/Performance/HistorialAgente" element={<HistorialAgentePerformance />} />
           <Route path="auditoria" element={<LogsTable />} />
           <Route path="reporteria" element={<Reporteria />} />
           <Route path="/reporteria/:id" element={<ReporteriaID />} />

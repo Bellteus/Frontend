@@ -1,9 +1,8 @@
-// src/pages/LogsTable.tsx
-
 import { useEffect, useState } from "react";
 import apiService from "../services/DataService";
 import { FiRefreshCcw } from "react-icons/fi";
 
+// ----- Types -----
 interface LogEntry {
   id: string;
   user_id: string;
@@ -12,9 +11,16 @@ interface LogEntry {
   timestamp: string;
 }
 
+// ----- Utils -----
 const formatDateTime = (iso: string) => {
   const d = new Date(iso);
-  return d.toLocaleString();
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const seconds = String(d.getSeconds()).padStart(2, '0');
+  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
 };
 
 function formatDateInput(dt: string | Date) {
@@ -22,6 +28,7 @@ function formatDateInput(dt: string | Date) {
   return d.toISOString().slice(0, 10);
 }
 
+// ----- Main Component -----
 const LogsTable = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,6 +38,7 @@ const LogsTable = () => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
+  // --- Fetch logs ---
   const fetchLogs = async () => {
     setLoading(true);
     try {
@@ -55,10 +63,10 @@ const LogsTable = () => {
     // eslint-disable-next-line
   }, []);
 
-  // Extraer correos únicos
+  // --- Extraer correos únicos ---
   const allEmails = Array.from(new Set(logs.map(l => l.user_email).filter(Boolean)));
 
-  // Filtrado frontend
+  // --- Filtrado frontend ---
   const filteredLogs = logs.filter((log) => {
     // Filtro por correo
     if (selectedEmail && log.user_email !== selectedEmail) return false;
@@ -70,86 +78,88 @@ const LogsTable = () => {
   });
 
   return (
-    <div className="min-h-screen p-4 bg-gray-100 flex flex-col">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h1 className="text-2xl font-bold text-gray-800">Auditoría</h1>
-        <button
-          className="bg-blue-500 hover:bg-blue-600 text-white rounded px-4 py-2 flex items-center gap-2 shadow"
-          onClick={fetchLogs}
-          title="Recargar"
-          disabled={loading}
-        >
-          <FiRefreshCcw size={18} />
-          <span className="hidden sm:inline">Recargar</span>
-        </button>
-      </div>
-
-      {/* Filtros */}
-      <div className="mb-4 flex flex-col sm:flex-row gap-3 items-center">
-        <div className="flex items-center gap-2">
-          <label className="font-semibold text-gray-700">Correo:</label>
-          <select
-            className="rounded border border-gray-300 px-2 py-1"
-            value={selectedEmail}
-            onChange={e => setSelectedEmail(e.target.value)}
+    <div className="flex flex-col h-screen p-4 lg:p-6 overflow-hidden bg-white">
+      <div className="bg-white p-4 rounded-xl shadow-md mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h1 className="text-xl lg:text-2xl font-semibold text-gray-700">Auditoría de Acciones</h1>
+          <button
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition flex items-center gap-2 text-sm"
+            onClick={fetchLogs}
+            title="Recargar"
+            disabled={loading}
           >
-            <option value="">Todos</option>
-            {allEmails.map(email => (
-              <option key={email} value={email}>{email}</option>
-            ))}
-          </select>
+            <FiRefreshCcw size={18} />
+            <span className="hidden sm:inline">Recargar</span>
+          </button>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="font-semibold text-gray-700">Desde:</label>
-          <input
-            type="date"
-            className="rounded border border-gray-300 px-2 py-1"
-            value={startDate}
-            max={endDate || undefined}
-            onChange={e => setStartDate(e.target.value)}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="font-semibold text-gray-700">Hasta:</label>
-          <input
-            type="date"
-            className="rounded border border-gray-300 px-2 py-1"
-            value={endDate}
-            min={startDate || undefined}
-            onChange={e => setEndDate(e.target.value)}
-            max={formatDateInput(new Date())}
-          />
+        {/* Filtros */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 text-xs gap-4 items-end">
+          <div>
+            <label className="font-medium text-sm">Correo</label>
+            <select
+              className="w-full border border-gray-300 rounded p-2"
+              value={selectedEmail}
+              onChange={e => setSelectedEmail(e.target.value)}
+            >
+              <option value="">Todos</option>
+              {allEmails.map(email => (
+                <option key={email} value={email}>{email}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="font-medium text-sm">Desde</label>
+            <input
+              type="date"
+              className="w-full border border-gray-300 rounded p-2"
+              value={startDate}
+              max={endDate || undefined}
+              onChange={e => setStartDate(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="font-medium text-sm">Hasta</label>
+            <input
+              type="date"
+              className="w-full border border-gray-300 rounded p-2"
+              value={endDate}
+              min={startDate || undefined}
+              onChange={e => setEndDate(e.target.value)}
+              max={formatDateInput(new Date())}
+            />
+          </div>
         </div>
       </div>
 
-      <div className="bg-white shadow rounded-xl flex-1 overflow-hidden border">
+      {/* Tabla y mensajes */}
+      <div className="bg-white rounded-xl shadow-md flex-1 overflow-hidden">
         {loading ? (
-          <div className="flex justify-center items-center h-72">
+          <div className="flex items-center justify-center h-full">
             <div className="flex flex-col items-center">
               <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
               <p className="mt-2 text-blue-600 font-medium text-center">Cargando logs...</p>
             </div>
           </div>
         ) : filteredLogs.length === 0 ? (
-          <div className="flex justify-center items-center h-48 text-gray-500">
-            No hay logs registrados.
+          <div className="flex items-center justify-center h-full">
+            <h1 className="text-center text-lg text-gray-500">No hay logs registrados</h1>
           </div>
         ) : (
-          <div className="overflow-auto max-h-[70vh]">
-            <table className="min-w-full text-sm text-gray-700">
-              <thead className="bg-blue-100 sticky top-0 z-10">
+          <div className="overflow-auto h-min-[500px]">
+            <table className="w-full text-sm lg:text-xs text-center whitespace-nowrap">
+              <thead className="sticky top-0 bg-gray-100 z-10 text-left">
                 <tr>
-                  <th className="px-4 py-3 border text-center font-semibold">Usuario</th>
-                  <th className="px-4 py-3 border text-center font-semibold">Acción</th>
-                  <th className="px-4 py-3 border text-center font-semibold">Fecha/Hora</th>
+                  <th className="p-2 text-gray-600 font-medium text-center">Usuario</th>
+                  <th className="p-2 text-gray-600 font-medium text-center">Acción</th>
+                  <th className="p-2 text-gray-600 font-medium text-center">Fecha/Hora</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-50 transition-all border-b text-center">
-                    <td className="px-4 py-2">{log.user_email}</td>
-                    <td className="px-4 py-2 text-left">{log.action}</td>
-                    <td className="px-4 py-2">{formatDateTime(log.timestamp)}</td>
+                  <tr key={log.id} className="border-b border-gray-200 hover:bg-gray-50 transition">
+                    <td className="p-1">{log.user_email}</td>
+                    <td className="p-1 text-left">{log.action}</td>
+                    <td className="p-1">{formatDateTime(log.timestamp)}</td>
                   </tr>
                 ))}
               </tbody>
