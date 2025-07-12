@@ -40,6 +40,12 @@ function apiDate(str: string) {
   return `${d}-${m}-${y}`;
 }
 
+// Función para mostrar correctamente el nombre del cliente
+function clienteVisual(cliente: string) {
+  if (!cliente) return cliente;
+  return cliente.replace(/NATURA PERÃš/gi, "NATURA PERÚ");
+}
+
 function resumenPorCliente(audios: AudioWithAnalysis[]) {
   const clientes: Record<string, AudioWithAnalysis[]> = {};
   audios.forEach(a => {
@@ -152,7 +158,7 @@ const DashboardCliente: React.FC = () => {
 
   // Pie Chart - Distribución de llamadas por cliente
   const pieDataClientes = {
-    labels: clientesResumen.map(c => c.cliente),
+    labels: clientesResumen.map(c => clienteVisual(c.cliente)),
     datasets: [{
       data: clientesResumen.map(c => c.totalLlamadas),
       backgroundColor: coloresClientes,
@@ -161,7 +167,7 @@ const DashboardCliente: React.FC = () => {
 
   // BAR HORIZONTAL - Satisfacción promedio por cliente
   const barDataSatisfaccionPorCliente = {
-    labels: clientesResumen.map(c => c.cliente),
+    labels: clientesResumen.map(c => clienteVisual(c.cliente)),
     datasets: [{
       label: "Satisfacción promedio (%)",
       data: clientesResumen.map(c => c.satisfaccionPromedio),
@@ -187,11 +193,11 @@ const DashboardCliente: React.FC = () => {
       const llamadasPorDia = fechasUnicas.map((fecha, i) => {
         if (i === 0) return 0; // Primer punto siempre en cero
         return audios.filter(a =>
-          (a.Cliente || 'Sin Cliente') === cliente.cliente && a.FechaHoraInicio.startsWith(fecha)
+          clienteVisual(a.Cliente || 'Sin Cliente') === clienteVisual(cliente.cliente) && a.FechaHoraInicio.startsWith(fecha)
         ).length;
       });
       return {
-        label: cliente.cliente,
+        label: clienteVisual(cliente.cliente),
         data: llamadasPorDia,
         borderColor: coloresClientes[idx % coloresClientes.length],
         backgroundColor: coloresClientes[idx % coloresClientes.length] + "22",
@@ -341,7 +347,7 @@ const DashboardCliente: React.FC = () => {
               <tbody>
                 {clientesResumen.map((cliente) => (
                   <tr key={cliente.cliente} className="bg-white hover:bg-[#eaf1fb] cursor-pointer transition">
-                    <td className="px-4 py-3 font-semibold">{cliente.cliente}</td>
+                    <td className="px-4 py-3 font-semibold">{clienteVisual(cliente.cliente)}</td>
                     <td className="px-4 py-3">{cliente.totalLlamadas}</td>
                     <td className="px-4 py-3">{cliente.satisfaccionPromedio}%</td>
                     <td className="px-4 py-3">{cliente.tmo} min</td>

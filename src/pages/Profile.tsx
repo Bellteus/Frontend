@@ -29,11 +29,6 @@ const PerfilUsuario: React.FC = () => {
         </div>
         <div className="w-full mt-2 space-y-2">
           <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-3">
-            <FiKey size={18} className="text-blue-500" />
-            <span className="font-semibold">ID:</span>
-            <span>{userId}</span>
-          </div>
-          <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-3">
             <FiMail size={18} className="text-blue-500" />
             <span className="font-semibold">Email:</span>
             <span>{userEmail}</span>

@@ -4,11 +4,18 @@ import { ClienteResponsePerformance } from '../types/ClientesPerformance';
 import { useNavigate } from 'react-router-dom';
 import apiService from '../services/DataService';
 
+// Función para corregir visualmente el nombre del cliente
+function clienteVisual(cliente: string | undefined | null) {
+  if (!cliente) return cliente;
+  // Corrige variantes "PERÃš", "PERÃšš", "PERÃšs", etc.
+  return cliente.replace(/NATURA PERÃš[\wšŠ]*?/gi, "NATURA PERÚ");
+}
+
 const HistorialClientePerformance = () => {
   const [allReportsClientes, setAllReportsClientes] = useState<ClienteResponsePerformance[]>([]);
   const [filteredReports, setFilteredReports] = useState<ClienteResponsePerformance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searching, setSearching] = useState(false); // <--- Nuevo estado
+  const [searching, setSearching] = useState(false);
   const [fechaInicio, setFechaInicio] = useState('');
   const [fechaFin, setFechaFin] = useState('');
   const [clienteFiltro, setClienteFiltro] = useState('');
@@ -31,7 +38,8 @@ const HistorialClientePerformance = () => {
       }));
       setAllReportsClientes(responseWithDispersion);
       setFilteredReports(responseWithDispersion);
-      // Obtener clientes únicos (ordenados)
+
+      // Obtener clientes únicos (ordenados), pero corregidos visualmente para el Select
       const clientes = Array.from(new Set(responseWithDispersion.map(r => r.cliente || '---'))).sort();
       setClientesUnicos(clientes);
     } catch (error) {
@@ -43,12 +51,13 @@ const HistorialClientePerformance = () => {
 
   // Filtrado por fechas y cliente
   const handleBuscar = () => {
-    setSearching(true); // Activa loading
-    setTimeout(() => { // Simula tiempo de carga (ajusta ms si quieres)
+    setSearching(true);
+    setTimeout(() => {
       let filtrados = allReportsClientes;
 
       if (clienteFiltro) {
-        filtrados = filtrados.filter(rep => (rep.cliente || '---') === clienteFiltro);
+        // Filtro visual: compara usando el nombre corregido visualmente
+        filtrados = filtrados.filter(rep => clienteVisual(rep.cliente) === clienteFiltro);
       }
       if (fechaInicio) {
         const inicio = new Date(fechaInicio).getTime();
@@ -59,13 +68,13 @@ const HistorialClientePerformance = () => {
         filtrados = filtrados.filter(rep => new Date(rep.DateTime_realizado).getTime() <= fin);
       }
       setFilteredReports(filtrados);
-      setSearching(false); // Desactiva loading
-    }, 350); // Delay artificial para UX. Puedes bajarlo si gustas
+      setSearching(false);
+    }, 350);
   };
 
   const handleDescargarPDF = async (reporte: ClienteResponsePerformance) => {
     const contenido = `
-Cliente: ${reporte.cliente}
+Cliente: ${clienteVisual(reporte.cliente)}
 Número de llamadas: ${reporte.numero_llamadas}
 Score promedio: ${reporte.performance_score_promedio}
 Satisfacción promedio: ${reporte.satisfaccion_cliente_promedio}
@@ -77,7 +86,7 @@ Fecha generado: ${reporte.DateTime_realizado}
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Reporte_${reporte.cliente || 'cliente'}.pdf`;
+    a.download = `Reporte_${clienteVisual(reporte.cliente) || 'cliente'}.pdf`;
     a.click();
     URL.revokeObjectURL(url);
 
@@ -88,7 +97,7 @@ Fecha generado: ${reporte.DateTime_realizado}
       await apiService.postSupervisorLog({
         user_id,
         user_email,
-        action: `Descargó reporte PDF de área "${reporte.cliente}"`
+        action: `Descargó reporte PDF de área "${clienteVisual(reporte.cliente)}"`
       });
     }
   };
@@ -133,7 +142,7 @@ Fecha generado: ${reporte.DateTime_realizado}
           >
             <option value="">Todos</option>
             {clientesUnicos.map((cli) => (
-              <option key={cli} value={cli}>{cli}</option>
+              <option key={cli} value={clienteVisual(cli) || ''}>{clienteVisual(cli) || '---'}</option>
             ))}
           </select>
         </div>
@@ -213,7 +222,7 @@ Fecha generado: ${reporte.DateTime_realizado}
                   key={reporte._id}
                   className="hover:bg-blue-50 transition-all text-center border-b border-gray-200"
                 >
-                  <td className="px-4 py-2">{reporte.cliente || '---'}</td>
+                  <td className="px-4 py-2">{clienteVisual(reporte.cliente) || '---'}</td>
                   <td className="px-4 py-2">{reporte.numero_llamadas}</td>
                   <td className="px-4 py-2">{reporte.performance_score_promedio?.toFixed(2)}</td>
                   <td className="px-4 py-2">{reporte.satisfaccion_cliente_promedio?.toFixed(2)}</td>
