@@ -151,6 +151,11 @@ const DashboardAgente: React.FC = () => {
 
   const agentesResumen = resumenPorAgente(audios);
 
+  // --- Solo para evolución diaria, top 5 agentes ---
+  const topAgentes = [...agentesResumen]
+    .sort((a, b) => b.totalLlamadas - a.totalLlamadas)
+    .slice(0, 5);
+
   // Pie Chart - Distribución de llamadas por agente
   const pieDataAgentes = {
     labels: agentesResumen.map(a => a.nombre),
@@ -173,7 +178,7 @@ const DashboardAgente: React.FC = () => {
     }]
   };
 
-  // Línea - Evolución diaria de llamadas por agente (arrancando desde 0)
+  // Línea - Evolución diaria de llamadas por agente (solo top 5)
   let fechasUnicas = Array.from(new Set(audios.map(a => a.FechaHoraInicio.slice(0, 10)))).sort();
   if (fechasUnicas.length > 0) {
     const fechaInicial = new Date(fechasUnicas[0]);
@@ -184,7 +189,7 @@ const DashboardAgente: React.FC = () => {
 
   const lineDataAgentes = {
     labels: fechasUnicas,
-    datasets: agentesResumen.map((agente, idx) => {
+    datasets: topAgentes.map((agente, idx) => {
       const llamadasPorDia = fechasUnicas.map((fecha, i) => {
         if (i === 0) return 0; // Primer punto siempre en cero
         return audios.filter(a =>
