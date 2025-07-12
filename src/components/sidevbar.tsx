@@ -3,7 +3,6 @@ import { useState } from 'react';
 import {
   FiMenu, FiGrid, FiList, FiUserCheck, FiArchive, FiUser,
   FiChevronDown, FiChevronRight, FiLogOut, FiHome,
-  FiUserPlus, FiUsers
 } from 'react-icons/fi';
 import apiService from '../services/DataService'; // <-- Agrega esto
 

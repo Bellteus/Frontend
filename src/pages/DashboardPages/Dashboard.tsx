@@ -16,7 +16,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 import { AudioWithAnalysis } from '../../types/AnalysisAudio';
 import { ClienteReporte } from '../../types/ClientReport';
-import { EmpleadoReporte } from '../../types/AgentReport';
 import apiService from '../../services/DataService';
 
 ChartJS.register(
@@ -53,7 +52,6 @@ const DEFAULT_END_DATE = "2025-05-31";
 const Dashboard: React.FC = () => {
   const [audios, setAudios] = useState<AudioWithAnalysis[]>([]);
   const [clientes, setClientes] = useState<ClienteReporte[]>([]);
-  const [empleados, setEmpleados] = useState<EmpleadoReporte[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,14 +97,13 @@ const Dashboard: React.FC = () => {
       try {
         const sDate = apiDate(startDate);
         const eDate = apiDate(endDate);
-        const [audiosRes, clientesRes, empleadosRes] = await Promise.all([
+        const [audiosRes, clientesRes] = await Promise.all([
           apiService.buscarAudios({ FechaHoraInicio: sDate, fechafin: eDate }),
           apiService.getReporteriaAudios({ FechaHoraInicio: sDate, fechafin: eDate }),
           apiService.getReporteAnalisisAgente({ Agente: '', fecha_inicio: sDate, fecha_fin: eDate }),
         ]);
         setAudios(Array.isArray(audiosRes) ? audiosRes : []);
         setClientes(Array.isArray(clientesRes) ? clientesRes : []);
-        setEmpleados(Array.isArray(empleadosRes) ? empleadosRes : []);
       } catch (err: any) {
         setError(err.message || 'No se pudieron cargar los datos.');
       }
@@ -145,8 +142,6 @@ const Dashboard: React.FC = () => {
     else if (a.ANALISIS_LLM.escalado?.toLowerCase() === 'sí' || a.ANALISIS_LLM.escalado?.toLowerCase() === 'si' || a.ANALISIS_LLM.escalado === '1') escalados++;
     else if (a.ANALISIS_LLM.necesita_followup?.toLowerCase() === 'sí' || a.ANALISIS_LLM.necesita_followup?.toLowerCase() === 'si' || a.ANALISIS_LLM.necesita_followup === '1') followup++;
   });
-  const totalCasos = resueltos + escalados + followup || 1;
-
   const fechasUnicas = Array.from(new Set(audios.map(a => a.FechaHoraInicio.slice(0, 10)))).sort();
 
   const datasetsClientes = Object.entries(llamadasPorCliente).map(([cliente, registros], idx) => {
@@ -512,7 +507,7 @@ const Dashboard: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {agentesVisibles.map((ag, i) => (
+                    {agentesVisibles.map((ag) => (
                       <tr key={ag.id} className="bg-white hover:bg-[#eaf1fb] cursor-pointer transition">
                         <td className="relative px-4 py-3">{ag.nombre}
                           <span className="absolute right-4 opacity-0 group-hover:opacity-100 text-[#3f51b5] transition">→</span>
@@ -591,7 +586,7 @@ const Dashboard: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {tmoVisibles.map((ag, i) => (
+                  {tmoVisibles.map((ag) => (
                     <tr key={ag.id + "tmo"} className="bg-white hover:bg-[#eaf1fb] cursor-pointer transition">
                       <td className="px-4 py-3">{ag.nombre}</td>
                       <td className="px-4 py-3">{ag.tmo}</td>

@@ -345,7 +345,7 @@ const DashboardAgente: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {agentesResumen.map((agente, idx) => (
+                {agentesResumen.map((agente) => (
                   <tr key={agente.id} className="bg-white hover:bg-[#eaf1fb] cursor-pointer transition">
                     <td className="px-4 py-3 font-semibold">{agente.nombre}</td>
                     <td className="px-4 py-3">{agente.totalLlamadas}</td>

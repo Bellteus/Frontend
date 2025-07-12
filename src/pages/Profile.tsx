@@ -1,13 +1,11 @@
 // src/pages/PerfilUsuario.tsx
 
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { FiUser, FiMail, FiKey, FiLogOut } from "react-icons/fi";
+import { FiUser, FiMail, FiKey } from "react-icons/fi";
 
 const PerfilUsuario: React.FC = () => {
   const [userId, setUserId] = useState("");
   const [userEmail, setUserEmail] = useState("");
-  const navigate = useNavigate();
 
   useEffect(() => {
     setUserId(localStorage.getItem("id") || "");

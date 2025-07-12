@@ -339,7 +339,7 @@ const DashboardCliente: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {clientesResumen.map((cliente, idx) => (
+                {clientesResumen.map((cliente) => (
                   <tr key={cliente.cliente} className="bg-white hover:bg-[#eaf1fb] cursor-pointer transition">
                     <td className="px-4 py-3 font-semibold">{cliente.cliente}</td>
                     <td className="px-4 py-3">{cliente.totalLlamadas}</td>

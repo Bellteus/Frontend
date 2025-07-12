@@ -1,32 +1,10 @@
 import { useParams } from 'react-router-dom';
-import { JSX, useEffect, useState } from 'react';
+import {useEffect, useState } from 'react';
 import { CallAnalysis } from '../types/AudiosMetadata';
 import { CallService } from '../services/AudioMetadataService';
 import { useNavigate } from 'react-router-dom';
 
-interface ListSectionProps {
-  title: string;
-  icon?: JSX.Element;
-  items?: string[] | null;
-}
 
-const ListSection = ({ title, icon, items }: ListSectionProps) => {
-  if (!items || items.length === 0) return null;
-
-  return (
-    <div className="bg-white rounded-xl shadow p-4 space-y-2">
-      <h3 className="text-sm font-semibold flex items-center gap-2 text-blue-600">
-        {icon}
-        {title}
-      </h3>
-      <ul className="list-disc list-inside text-xs text-gray-800 space-y-1">
-        {items.map((item, index) => (
-          <li key={index}>{item}</li>
-        ))}
-      </ul>
-    </div>
-  );
-};
 
 const ReporteriaID = () => {
   const { id } = useParams<{ id: string }>();

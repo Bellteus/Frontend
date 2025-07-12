@@ -1,14 +1,7 @@
-// src/services/apiService.ts
-
-import axios from "axios";
 import { AudioWithAnalysis } from "../types/AnalysisAudio";
 import { ClienteReporte } from "../types/ClientReport";
 import { EmpleadoReporte } from "../types/AgentReport";
 import api from "./Api"; // Asegúrate que tienes una instancia Axios configurada
-
-
-
-
 // @ts-ignore
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8001";
 
