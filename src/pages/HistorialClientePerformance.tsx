@@ -1,252 +1,472 @@
-import { useEffect, useState } from 'react';
-import { ClientePerformanceService } from '../services/ClientePerformanceService';
-import { ClienteResponsePerformance } from '../types/ClientesPerformance';
-import { useNavigate } from 'react-router-dom';
-import apiService from '../services/DataService';
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import {
+  CountryPerformanceReport,
+  SentimentDistribution,
+} from "../types/AnalysisReport";
+import { CountryPerformanceService, LogsService } from "../services/Service";
+import {
+  FiArrowLeft,
+  FiDownload,
+  FiGlobe,
+  FiSmile,
+  FiTrendingUp,
+} from "react-icons/fi";
 
-// Función para corregir visualmente el nombre del cliente
-function clienteVisual(cliente: string | undefined | null) {
-  if (!cliente) return cliente;
-  // Corrige variantes "PERÃš", "PERÃšš", "PERÃšs", etc.
-  return cliente.replace(/NATURA PERÃš[\wšŠ]*?/gi, "NATURA PERÚ");
+/* ======================== Paleta coherente ======================== */
+const CLASSES = {
+  primary: "bg-indigo-600 hover:bg-indigo-700 text-white",
+  outline:
+    "border border-slate-300 hover:border-slate-400 text-slate-700 bg-white",
+  chip: "inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border",
+  chipPos: "border-green-300 bg-green-50 text-green-800",
+  chipNeu: "border-sky-300 bg-sky-50 text-sky-800",
+  chipNeg: "border-rose-300 bg-rose-50 text-rose-800",
+};
+
+/* ======================== Tipos extendidos ======================== */
+type CountryReportStored = CountryPerformanceReport & {
+  _id?: string;
+  // metadatos que guardamos al persistir
+  fecha_inicio?: string; // ISO
+  fecha_fin?: string; // ISO
+  created_at?: string; // ISO
+};
+
+/* ======================== Helpers ======================== */
+const pct = (v?: number | null) =>
+  typeof v === "number" && isFinite(v) ? `${(v * 100).toFixed(1)}%` : "—";
+const n2 = (v?: number | null) =>
+  typeof v === "number" && isFinite(v) ? v.toFixed(2) : "—";
+const fmtDate = (iso?: string) =>
+  iso ? new Date(iso).toLocaleString() : "—";
+const fmtDateShort = (iso?: string) =>
+  iso ? new Date(iso).toLocaleDateString() : "—";
+
+const getRangeStart = (r: CountryReportStored) => r.fecha_inicio;
+const getRangeEnd = (r: CountryReportStored) => r.fecha_fin;
+
+const inRange = (d: Date, from?: string, to?: string) => {
+  if (!from && !to) return true;
+  const t = d.getTime();
+  const f = from ? new Date(from).getTime() : -Infinity;
+  const e = to ? new Date(to).getTime() : Infinity;
+  return t >= f && t <= e;
+};
+
+const sentimentChip = (s?: string) => {
+  const v = (s || "").toLowerCase();
+  if (v === "positivo")
+    return <span className={`${CLASSES.chip} ${CLASSES.chipPos}`}>Positivo</span>;
+  if (v === "negativo")
+    return <span className={`${CLASSES.chip} ${CLASSES.chipNeg}`}>Negativo</span>;
+  if (v === "neutral")
+    return <span className={`${CLASSES.chip} ${CLASSES.chipNeu}`}>Neutral</span>;
+  return <span className="text-xs text-slate-500">—</span>;
+};
+
+const toPctMap = (map?: Record<string, number | null> | null) => {
+  if (!map || typeof map !== "object") return null;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(map)) {
+    out[k] = pct(v);
+  }
+  return out;
+};
+
+const normalizeSentiment = (dist?: SentimentDistribution | null) => {
+  if (!dist) return null;
+  return {
+    positivo: pct(dist.positivo ?? null),
+    neutral: pct(dist.neutral ?? null),
+    negativo: pct(dist.negativo ?? null),
+  };
+};
+
+/* =================== Export PDF (País) =================== */
+function exportarPaisPDF(data: CountryPerformanceReport) {
+  const doc = new jsPDF();
+  const now = new Date().toLocaleString();
+
+  doc.setFontSize(16);
+  doc.text("Reporte de Análisis por País", 14, 15);
+  doc.setFontSize(10);
+  doc.text(`Fecha de generación: ${now}`, 14, 22);
+
+  autoTable(doc, {
+    startY: 28,
+    head: [["Campo", "Valor"]],
+    body: [
+      ["País", data.pais],
+      ["Periodo", data.periodo || "—"],
+      ["# Llamadas", data.numero_llamadas ?? "—"],
+      ["Score promedio", n2(data.performance_score_promedio)],
+      ["Satisfacción promedio", n2(data.satisfaccion_cliente_promedio)],
+      ["Sentimiento global", data.sentimiento_global || "—"],
+      ["Resueltos", pct(data.porcentaje_resueltos)],
+      ["Escalados", pct(data.porcentaje_escalados)],
+      ["Follow-up", pct(data.porcentaje_followup)],
+      ["Duración prom. (seg)", n2(data.duracion_promedio_seg ?? null)],
+      ["Wrap-up prom. (seg)", n2(data.wrapup_promedio_seg ?? null)],
+      ["Hold prom. (seg)", n2(data.hold_promedio_seg ?? null)],
+      ["Holds prom.", n2(data.holds_promedio ?? null)],
+    ],
+  });
+
+  // Secciones de distribuciones (normalizadas)
+  const sentPct = normalizeSentiment(data.sentimiento_distribucion);
+  if (sentPct) {
+    const y =
+      (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable
+        ?.finalY ?? 80;
+    autoTable(doc, {
+      startY: y + 6,
+      head: [["Sentimiento", "Distribución"]],
+      body: [
+        ["Positivo", sentPct.positivo],
+        ["Neutral", sentPct.neutral],
+        ["Negativo", sentPct.negativo],
+      ],
+    });
+  }
+
+  const calltypePct = toPctMap(data.calltype_distribucion);
+  if (calltypePct) {
+    const y =
+      (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable
+        ?.finalY ?? 80;
+    autoTable(doc, {
+      startY: y + 6,
+      head: [["Tipo", "Distribución"]],
+      body: Object.entries(calltypePct).map(([k, v]) => [k, v]),
+    });
+  }
+
+  const addList = (title: string, items?: string[] | null) => {
+    if (!items?.length) return;
+    const y =
+      (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable
+        ?.finalY ?? 80;
+    doc.setFontSize(12);
+    doc.text(title, 14, y + 8);
+    doc.setFontSize(10);
+    autoTable(doc, {
+      startY: y + 10,
+      head: [["Items"]],
+      body: items.map((x) => [x]),
+    });
+  };
+
+  addList("Fortalezas recurrentes", data.fortalezas_recurrentes);
+  addList("Oportunidades de mejora", data.oportunidades_mejora_recurrentes);
+  addList("Temas principales", data.temas_principales);
+  addList("Palabras clave frecuentes", data.palabras_clave_frecuentes);
+  addList("Alertas de calidad recurrentes", data.alertas_calidad_recurrentes);
+  addList("Agentes destacados", data.agentes_destacados);
+  addList(
+    "Agentes con bajo performance",
+    data.agentes_con_bajo_performance
+  );
+  addList(
+    "Organizaciones destacadas",
+    data.organizaciones_destacadas || undefined
+  );
+  addList("Organizaciones con riesgo", data.organizaciones_con_riesgo || undefined);
+
+  const finalY =
+    (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable
+      ?.finalY ?? 80;
+  if (data.resumen_ejecutivo) {
+    doc.setFontSize(12);
+    doc.text("Resumen ejecutivo:", 14, finalY + 10);
+    doc.setFontSize(10);
+    doc.text(doc.splitTextToSize(data.resumen_ejecutivo, 180), 14, finalY + 16);
+  }
+
+  doc.save(`Analisis_Pais_${data.pais}_${new Date().toISOString()}.pdf`);
 }
 
-const HistorialClientePerformance = () => {
-  const [allReportsClientes, setAllReportsClientes] = useState<ClienteResponsePerformance[]>([]);
-  const [filteredReports, setFilteredReports] = useState<ClienteResponsePerformance[]>([]);
+/* ================== Componente ================== */
+const HistorialPaisPerformance = () => {
+  const [reports, setReports] = useState<CountryReportStored[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
-  const [fechaInicio, setFechaInicio] = useState('');
-  const [fechaFin, setFechaFin] = useState('');
-  const [clienteFiltro, setClienteFiltro] = useState('');
-  const [clientesUnicos, setClientesUnicos] = useState<string[]>([]);
+
+  const [fechaInicio, setFechaInicio] = useState("");
+  const [fechaFin, setFechaFin] = useState("");
+  const [paisFiltro, setPaisFiltro] = useState("");
+
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchReports();
-    // eslint-disable-next-line
-  }, []);
-
+  // Obtener todos los reportes
   const fetchReports = async () => {
     setLoading(true);
     try {
-      const response = await ClientePerformanceService.getTodosLosReportesClientes();
-      const responseWithDispersion = response.map((r: any) => ({
-        ...r,
-        dispersion_performance_score: r.dispersion_performance_score ?? 0,
-        dispersion_satisfaccion_cliente: r.dispersion_satisfaccion_cliente ?? 0,
-      }));
-      setAllReportsClientes(responseWithDispersion);
-      setFilteredReports(responseWithDispersion);
-
-      // Obtener clientes únicos (ordenados), pero corregidos visualmente para el Select
-      const clientes = Array.from(new Set(responseWithDispersion.map(r => r.cliente || '---'))).sort();
-      setClientesUnicos(clientes);
-    } catch (error) {
-      console.error('Error al obtener reportes de clientes:', error);
+      const data = await CountryPerformanceService.listReports();
+      setReports(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setReports([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Filtrado por fechas y cliente
+  useEffect(() => {
+    fetchReports();
+  }, []);
+
+  // Países únicos para el select
+  const paisesUnicos = useMemo(
+    () =>
+      Array.from(new Set((reports || []).map((r) => r.pais || "—")))
+        .filter((x) => x && x !== "—")
+        .sort((a, b) => a.localeCompare(b, "es")),
+    [reports]
+  );
+
+  // Filtrado en frontend (por país y rango)
+  const filtered = useMemo(() => {
+    const list = reports.filter((r) => {
+      const paisOk = paisFiltro ? r.pais === paisFiltro : true;
+      const ref = getRangeStart(r) || r.created_at;
+      const dateOk = ref ? inRange(new Date(ref), fechaInicio, fechaFin) : true;
+      return paisOk && dateOk;
+    });
+
+    // Orden más reciente primero
+    return list.sort((a, b) => {
+      const ad = new Date(a.created_at || getRangeStart(a) || 0).getTime();
+      const bd = new Date(b.created_at || getRangeStart(b) || 0).getTime();
+      return bd - ad;
+    });
+  }, [reports, paisFiltro, fechaInicio, fechaFin]);
+
+  // Buscar (UX spinner ligero)
   const handleBuscar = () => {
     setSearching(true);
-    setTimeout(() => {
-      let filtrados = allReportsClientes;
-
-      if (clienteFiltro) {
-        // Filtro visual: compara usando el nombre corregido visualmente
-        filtrados = filtrados.filter(rep => clienteVisual(rep.cliente) === clienteFiltro);
-      }
-      if (fechaInicio) {
-        const inicio = new Date(fechaInicio).getTime();
-        filtrados = filtrados.filter(rep => new Date(rep.DateTime_realizado).getTime() >= inicio);
-      }
-      if (fechaFin) {
-        const fin = new Date(fechaFin).getTime();
-        filtrados = filtrados.filter(rep => new Date(rep.DateTime_realizado).getTime() <= fin);
-      }
-      setFilteredReports(filtrados);
-      setSearching(false);
-    }, 350);
+    setTimeout(() => setSearching(false), 350);
   };
 
-  const handleDescargarPDF = async (reporte: ClienteResponsePerformance) => {
-    const contenido = `
-Cliente: ${clienteVisual(reporte.cliente)}
-Número de llamadas: ${reporte.numero_llamadas}
-Score promedio: ${reporte.performance_score_promedio}
-Satisfacción promedio: ${reporte.satisfaccion_cliente_promedio}
-Sentimiento: ${reporte.sentimiento_global}
-Fecha búsqueda: ${reporte.fecha_inicio_busqueda} a ${reporte.fecha_fin_busqueda}
-Fecha generado: ${reporte.DateTime_realizado}
-    `;
-    const blob = new Blob([contenido], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Reporte_${clienteVisual(reporte.cliente) || 'cliente'}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
-
-    // LOG al descargar PDF
+  // Descargar PDF + log
+  const handlePDF = async (r: CountryReportStored) => {
+    exportarPaisPDF(r);
     const user_id = localStorage.getItem("id");
     const user_email = localStorage.getItem("email");
     if (user_id && user_email) {
-      await apiService.postSupervisorLog({
-        user_id,
-        user_email,
-        action: `Descargó reporte PDF de área "${clienteVisual(reporte.cliente)}"`
-      });
+      try {
+        await LogsService.postSupervisorLog({
+          user_id,
+          user_email,
+          action: `Descargó reporte PDF de país "${r.pais}"`,
+        });
+      } catch {}
     }
   };
 
-  const handleRegresar = async () => {
+  // Regresar + log
+  const handleBack = async () => {
     const user_id = localStorage.getItem("id");
     const user_email = localStorage.getItem("email");
     if (user_id && user_email) {
-      await apiService.postSupervisorLog({
-        user_id,
-        user_email,
-        action: "Regresó desde historial de reportes por área"
-      });
+      try {
+        await LogsService.postSupervisorLog({
+          user_id,
+          user_email,
+          action: "Regresó desde historial de reportes por país",
+        });
+      } catch {}
     }
     navigate(-1);
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-100 p-4">
+    <div className="min-h-screen p-4 space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <button
-          onClick={handleRegresar}
-          className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded shadow font-semibold"
-        >
-          ← Regresar
-        </button>
-        <h1 className="text-2xl font-bold text-gray-800 text-center flex-1 uppercase">
-          Historial Reportes Generados por Área
-        </h1>
-        <div className="w-36" />
-      </div>
-
-      {/* Filtro */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Cliente:</label>
-          <select
-            value={clienteFiltro}
-            onChange={e => setClienteFiltro(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 w-full shadow-sm"
-          >
-            <option value="">Todos</option>
-            {clientesUnicos.map((cli) => (
-              <option key={cli} value={clienteVisual(cli) || ''}>{clienteVisual(cli) || '---'}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Desde:</label>
-          <input
-            type="date"
-            value={fechaInicio}
-            onChange={(e) => setFechaInicio(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 w-full shadow-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Hasta:</label>
-          <input
-            type="date"
-            value={fechaFin}
-            onChange={(e) => setFechaFin(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 w-full shadow-sm"
-          />
-        </div>
-        <div className="flex items-end">
+      <div className="bg-white rounded-xl shadow border border-slate-200">
+        <div className="px-4 py-3 border-b border-slate-200 flex items-center gap-3">
           <button
-            onClick={handleBuscar}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow font-semibold"
-            disabled={searching}
+            onClick={handleBack}
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg ${CLASSES.outline}`}
           >
-            {searching ? (
-              <span className="flex items-center justify-center">
-                <svg className="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                </svg>
-                Buscando...
-              </span>
-            ) : 'Buscar'}
+            <FiArrowLeft /> Regresar
           </button>
+          <h1 className="text-xl font-bold text-slate-900 flex-1 text-center">
+            Historial de reportes generados por país
+          </h1>
+          <div className="w-[110px]" />
+        </div>
+
+        {/* Filtros */}
+        <div className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-1">País</label>
+              <select
+                value={paisFiltro}
+                onChange={(e) => setPaisFiltro(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2"
+              >
+                <option value="">Todos</option>
+                {paisesUnicos.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Desde</label>
+              <input
+                type="date"
+                value={fechaInicio}
+                onChange={(e) => setFechaInicio(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Hasta</label>
+              <input
+                type="date"
+                value={fechaFin}
+                onChange={(e) => setFechaFin(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2"
+              />
+            </div>
+
+            <div className="flex items-end">
+              <button
+                onClick={handleBuscar}
+                className={`w-full px-4 py-2 rounded-lg ${CLASSES.primary}`}
+                disabled={searching}
+              >
+                {searching ? "Buscando…" : "Aplicar"}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Tabla */}
-      <div className="flex-1 overflow-auto rounded-lg border border-gray-200 bg-white shadow">
-        {loading || searching ? (
+      <div className="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
+        {(loading || searching) && (
           <div className="flex flex-col items-center justify-center h-48">
-            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-            <span className="mt-4 text-blue-600 font-semibold text-lg">Cargando...</span>
+            <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+            <span className="mt-3 text-indigo-700 font-semibold">
+              Cargando…
+            </span>
           </div>
-        ) : filteredReports.length === 0 ? (
-          <div className="p-6 text-center text-gray-500">No hay reportes disponibles.</div>
-        ) : (
-          <table className="min-w-full text-[15px] text-gray-800">
-            <thead className="bg-gray-50 sticky top-0 z-10">
-              <tr>
-                {[
-                  'Cliente',
-                  'Llamadas',
-                  'Score Prom.',
-                  'Satisfacción',
-                  'Sentimiento',
-                  'Desde',
-                  'Hasta',
-                  'Generado',
-                  'PDF',
-                ].map((th) => (
-                  <th
-                    key={th}
-                    className="px-4 py-3 font-bold text-center"
-                  >
-                    {th}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredReports.map((reporte) => (
-                <tr
-                  key={reporte._id}
-                  className="hover:bg-blue-50 transition-all text-center border-b border-gray-200"
-                >
-                  <td className="px-4 py-2">{clienteVisual(reporte.cliente) || '---'}</td>
-                  <td className="px-4 py-2">{reporte.numero_llamadas}</td>
-                  <td className="px-4 py-2">{reporte.performance_score_promedio?.toFixed(2)}</td>
-                  <td className="px-4 py-2">{reporte.satisfaccion_cliente_promedio?.toFixed(2)}</td>
-                  <td className="px-4 py-2">{reporte.sentimiento_global || '---'}</td>
-                  <td className="px-4 py-2">{new Date(reporte.fecha_inicio_busqueda).toLocaleDateString()}</td>
-                  <td className="px-4 py-2">{new Date(reporte.fecha_fin_busqueda).toLocaleDateString()}</td>
-                  <td className="px-4 py-2">{new Date(reporte.DateTime_realizado).toLocaleString()}</td>
-                  <td className="px-4 py-2">
-                    <button
-                      onClick={() => handleDescargarPDF(reporte)}
-                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-1 rounded shadow-sm font-bold transition"
-                      title="Descargar PDF"
+        )}
+
+        {!loading && !searching && filtered.length === 0 && (
+          <div className="p-6 text-center text-slate-600">
+            No hay reportes disponibles.
+          </div>
+        )}
+
+        {!loading && !searching && filtered.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-[15px]">
+              <thead className="bg-slate-50 sticky top-0 z-10">
+                <tr className="text-slate-700">
+                  {[
+                    "País",
+                    "Llamadas",
+                    "Score prom.",
+                    "Satisfacción",
+                    "Sentimiento",
+                    "Resueltos",
+                    "Rango analizado",
+                    "Generado",
+                    "PDF",
+                  ].map((th) => (
+                    <th key={th} className="px-4 py-3 font-semibold text-center">
+                      {th}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {filtered.map((r, idx) => {
+                  const desde = getRangeStart(r);
+                  const hasta = getRangeEnd(r);
+                  return (
+                    <tr
+                      key={r._id || `${r.pais}-${idx}`}
+                      className="hover:bg-indigo-50/40 transition-colors"
                     >
-                      PDF
-                    </button>
+                      <td className="px-4 py-2 text-center">
+                        <div className="inline-flex items-center gap-2">
+                          <span className="p-1.5 rounded-md bg-indigo-50 text-indigo-700">
+                            <FiGlobe />
+                          </span>
+                          {r.pais}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        {r.numero_llamadas ?? "—"}
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        {n2(r.performance_score_promedio)}
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        {n2(r.satisfaccion_cliente_promedio)}
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        {sentimentChip(r.sentimiento_global ?? undefined)}
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        {pct(r.porcentaje_resueltos)}
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        <div className="flex flex-col">
+                          <span className="text-slate-800">
+                            {fmtDateShort(desde)}
+                          </span>
+                          <span className="text-slate-500 text-xs">
+                            {fmtDateShort(hasta)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        {fmtDate(r.created_at)}
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        <button
+                          onClick={() => handlePDF(r)}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white"
+                          title="Descargar PDF"
+                        >
+                          <FiDownload /> PDF
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="bg-slate-50">
+                <tr>
+                  <td className="px-4 py-3 text-sm text-slate-600" colSpan={9}>
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">
+                        <FiTrendingUp /> {filtered.length} reportes
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">
+                        <FiSmile /> sentimiento legible (chips)
+                      </span>
+                    </div>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </tfoot>
+            </table>
+          </div>
         )}
       </div>
     </div>
   );
 };
 
-export default HistorialClientePerformance;
+export default HistorialPaisPerformance;

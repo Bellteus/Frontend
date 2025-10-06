@@ -1,269 +1,506 @@
-import React, { useState } from 'react';
-import { CallAnalysis } from '../types/AudiosMetadata';
-import { CallService } from '../services/AudioMetadataService';
-import apiService from '../services/DataService';
-import { useNavigate } from 'react-router-dom';
+// src/pages/CallsWithAnalysis.tsx
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { JoinService } from "../services/Service";
 
-const formatDateToDMY = (dateStr: string): string => {
-  const date = new Date(dateStr);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${day}-${month}-${year}`;
+/* ======================= Paleta común ======================= */
+const PALETTE = [
+  "#0ea5e9", "#0284c7", "#38bdf8", "#3b82f6", "#2563eb", "#1d4ed8",
+  "#60a5fa", "#93c5fd", "#bfdbfe", "#a5b4fc", "#6366f1", "#3f51b5",
+  "#2d5a9e", "#64748b", "#94a3b8", "#475569", "#1e3a8a", "#0b4f82",
+  "#4f46e5", "#7dd3fc", "#c7d2fe", "#22c55e"
+];
+
+/* ======================= Fechas por defecto (primera semana) ======================= */
+const DEFAULT_START = "2025-08-01";
+const DEFAULT_END = "2025-08-07";
+
+/* ======================= Tipos ======================= */
+export interface CallRecord2 {
+  id_llamada: number;
+  ani?: string | null;
+  dnis?: string | null;
+  calltype?: string | null;
+  starttime?: string | null;
+  endtime?: string | null;
+  duration?: number | null;
+  empleado_nombre?: string | null;
+  organization?: string | null;
+  organization_id?: number | null;
+  extension?: number | null;
+  pbx_login_id?: string | null;
+  agent_id?: number | null;
+  agent_name?: string | null;
+  wrapup_time?: number | null;
+  total_hold_time?: number | null;
+  number_of_holds?: number | null;
+  pais?: string | null;
+}
+export interface AnalysisData {
+  callId: number;
+  cumplimiento_protocolo: Record<string, unknown>;
+  fortalezas: string[];
+  oportunidades_mejora: string[];
+  analisis_sentimiento_cliente: Record<string, unknown>;
+  seguimiento: Record<string, unknown>;
+  evidencias_textuales: string[];
+  _class?: string;
+}
+export interface CallWithAnalysisItem {
+  id: number;
+  cdr: CallRecord2;
+  analysis: AnalysisData | null;
+}
+interface Page<T> {
+  items: T[];
+  page: number;
+  page_size: number;
+  total_items?: number;
+  total_pages?: number;
+}
+
+/* ======================= Utils ======================= */
+const PAGE_SIZE = 50;
+
+const fmtDT = (s?: string | null) => {
+  if (!s) return "—";
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const HH = String(d.getHours()).padStart(2, "0");
+  const MM = String(d.getMinutes()).padStart(2, "0");
+  const SS = String(d.getSeconds()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd} ${HH}:${MM}:${SS}`;
+};
+const fmtMMSS = (sec?: number | null) => {
+  if (typeof sec !== "number" || isNaN(sec)) return "0:00";
+  const s = Math.max(0, Math.round(sec));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+};
+const safeLower = (x: unknown) => (x == null ? "" : String(x).toLowerCase());
+const getDurSec = (cdr?: CallRecord2) => {
+  if (!cdr) return 0;
+  if (typeof cdr.duration === "number" && !isNaN(cdr.duration)) return cdr.duration!;
+  const s = cdr.starttime ? new Date(cdr.starttime).getTime() : NaN;
+  const e = cdr.endtime ? new Date(cdr.endtime).getTime() : NaN;
+  if (!isNaN(s) && !isNaN(e) && e >= s) return (e - s) / 1000;
+  return 0;
 };
 
-const formatDateTime = (dateStr: string): string => {
-  const date = new Date(dateStr);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
-  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-};
+/* ======================= Skeleton ======================= */
+const RowSkeleton: React.FC = () => (
+  <tr className="animate-pulse">
+    {Array.from({ length: 9 }).map((_, i) => (
+      <td key={i} className="px-4 py-4">
+        <div className="h-3 w-[70%] bg-slate-200 rounded" />
+      </td>
+    ))}
+  </tr>
+);
 
-const calcularDuracion = (inicio: string, fin: string): string => {
-  const start = new Date(inicio);
-  const end = new Date(fin);
-  const diffMs = end.getTime() - start.getTime();
-  if (diffMs < 0) return '00:00:00';
-  const diffSec = Math.floor(diffMs / 1000);
-  const hours = Math.floor(diffSec / 3600).toString().padStart(2, '0');
-  const minutes = Math.floor((diffSec % 3600) / 60).toString().padStart(2, '0');
-  const seconds = (diffSec % 60).toString().padStart(2, '0');
-  return `${hours}:${minutes}:${seconds}`;
-};
-
-const CallSearchTable: React.FC = () => {
-  const [calls, setCalls] = useState<CallAnalysis[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+/* ======================= Componente ======================= */
+const CallsWithAnalysis: React.FC = () => {
   const navigate = useNavigate();
-  const [fechaInicio, setFechaInicio] = useState('');
-  const [fechaFin, setFechaFin] = useState('');
-  const [mostrarFiltros, setMostrarFiltros] = useState(false);
-  const [cliente, setCliente] = useState('');
-  const [nombreArea, setNombreArea] = useState('');
-  const [idEmpleado, setIdEmpleado] = useState('');
-  const [NombreEmpleado, setnombreEmpleado] = useState('');
-  const [filtroActivo, setFiltroActivo] = useState(false);
-  const [ArrayIds, setArrayIds] = useState<string[]>([]);
-  const [ArrayAgencias, setArrayAgencias] = useState<string[]>([]);
-  const [ArrayArea, setArrayArea] = useState<string[]>([]);
-  const [ArrayEmpleados, setArrayEmpleados] = useState<string[]>([]);
 
-  const buscarLlamadas = async () => {
+  // filtros
+  const [start, setStart] = useState(DEFAULT_START);
+  const [end, setEnd] = useState(DEFAULT_END);
+  const [onlyWithAnalysis, setOnlyWithAnalysis] = useState<boolean>(true);
+  const [onlyGT5, setOnlyGT5] = useState<boolean>(true); // nuevo filtro
+  const [query, setQuery] = useState<string>("");
+
+  // paginación
+  const [page, setPage] = useState<number>(1);
+  const [totalPages, setTotalPages] = useState<number | null>(null);
+  const [totalItems, setTotalItems] = useState<number | null>(null);
+
+  // data
+  const [items, setItems] = useState<CallWithAnalysisItem[]>([]);
+
+  // ui
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const abortRef = useRef<AbortController | null>(null);
+
+  async function fetchPage(p: number) {
     setLoading(true);
     setError(null);
 
-    // Armar acción del Log
-
-    let action = `Se ha buscado llamadas entre ${fechaInicio || '---'} y ${fechaFin || '---'}`;
-    if (nombreArea) action += ` | Área: ${nombreArea}`;
-    if (idEmpleado) action += ` | ID Empleado: ${idEmpleado}`;
-    if (NombreEmpleado) action += ` | Empleado: ${NombreEmpleado}`;
-    if (cliente) action += ` | Agencia: ${cliente}`;
+    abortRef.current?.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
 
     try {
-    const user_id = localStorage.getItem("id");
-    const user_email = localStorage.getItem("email");
-      console.log( "Id", user_id)
-        console.log( "email", user_email)
+      const res = await JoinService.listWithAnalysis(start, end, p, PAGE_SIZE, onlyWithAnalysis);
 
-      if (user_id && user_email) {
-        await apiService.postSupervisorLog({
-          user_id,
-          user_email,
-          action,
-        });
-        console.log("Log de búsqueda enviado:", { user_id, user_email, action });
+      // Normalizar respuesta (aceptar snake/camel)
+      const r: any = Array.isArray(res)
+        ? { items: res, page: p, page_size: PAGE_SIZE }
+        : res;
+
+      const normalized: Page<CallWithAnalysisItem> = {
+        items: (r.items ?? r.data ?? []) as CallWithAnalysisItem[],
+        page: Number(r.page ?? r.currentPage ?? p),
+        page_size: Number(r.page_size ?? r.pageSize ?? PAGE_SIZE),
+        total_items: Number(r.total_items ?? r.totalItems ?? r.total ?? r.count ?? 0) || undefined,
+        total_pages: Number(r.total_pages ?? r.totalPages ?? 0) || undefined,
+      };
+
+      // Derivar total_pages si viene total_items
+      let computedTotalPages = normalized.total_pages ?? null;
+      if (!computedTotalPages && normalized.total_items && normalized.page_size) {
+        computedTotalPages = Math.max(1, Math.ceil(normalized.total_items / normalized.page_size));
       }
 
-      // 2. Luego, hacer la búsqueda real
-      const fi = fechaInicio ? formatDateToDMY(fechaInicio) : '';
-      const ff = fechaFin ? formatDateToDMY(fechaFin) : '';
-      const data = await CallService.getAllCalls(fi, ff, cliente, nombreArea, idEmpleado, NombreEmpleado);
-
-      setCalls(data);
-
-      const idsUnicos = [...new Set(data.map((item) => item.IdEmpleado))];
-      const agenciasUnicas = [...new Set(data.map((item) => item.Cliente))];
-      const areasUnicas = [...new Set(data.map((item) => item.NombreArea))];
-      const empleadosUnicos = [...new Set(data.map((item) => item.NombreEmpleado))];
-
-      setArrayIds(idsUnicos);
-      setArrayAgencias(agenciasUnicas);
-      setArrayArea(areasUnicas);
-      setArrayEmpleados(empleadosUnicos);
-      setFiltroActivo(true);
-    } catch (err: any) {
-      setError('Error al buscar llamadas o registrar el log');
-      console.error('Error:', err);
-    } finally {
+      setItems(normalized.items || []);
+      setPage(normalized.page || p);
+      setTotalPages(computedTotalPages);
+      setTotalItems(normalized.total_items ?? null);
+      setLoading(false);
+    } catch (e: any) {
+      if (e?.name === "CanceledError") return;
+      setError(e?.message || "No se pudo cargar la página.");
       setLoading(false);
     }
+  }
+
+  useEffect(() => {
+    setPage(1); // reset al cambiar filtros
+  }, [start, end, onlyWithAnalysis, query, onlyGT5]);
+
+  useEffect(() => {
+    fetchPage(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, start, end, onlyWithAnalysis]);
+
+  // búsqueda + filtro local en página
+  const filtered = useMemo(() => {
+    const q = safeLower(query);
+    return items.filter((it) => {
+      // filtro > 5s
+      if (onlyGT5 && getDurSec(it.cdr) <= 5) return false;
+      if (!q) return true;
+      const c = it.cdr || {};
+      return [
+        c.agent_name, c.empleado_nombre, c.ani, c.dnis,
+        c.calltype, c.organization, c.pais, it.id
+      ].some((v) => safeLower(v).includes(q));
+    });
+  }, [items, query, onlyGT5]);
+
+  // paginador helpers
+  const canPrev = page > 1;
+  const canNext = totalPages != null ? page < totalPages : items.length === PAGE_SIZE;
+
+  const goFirst = () => canPrev && setPage(1);
+  const goPrev = () => canPrev && setPage((p) => Math.max(1, p - 1));
+  const goNext = () => canNext && setPage((p) => p + 1);
+  const goLast = () => {
+    if (totalPages != null) setPage(totalPages);
   };
 
+  /* ======================= Render ======================= */
   return (
-    <div className="flex flex-col h-screen p-4 lg:p-6 overflow-hidden bg-white">
-      <div className="bg-white p-4 rounded-xl shadow-md mb-4">
-        <h1 className="text-xl lg:text-2xl font-semibold text-gray-700 mb-4">Búsqueda de Llamadas</h1>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 text-xs gap-4 items-end">
+    <div className="min-h-screen bg-[#f6f7fb]">
+      <div className="w-full mx-auto max-w-[1700px] px-6 2xl:px-10 py-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-start justify-between">
           <div>
-            <label className="font-medium text-sm">Fecha Inicio</label>
-            <input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} className="w-full border border-gray-300 rounded p-2" />
+            <h1 className="text-[#1f2a56] text-[26px] md:text-[30px] font-extrabold tracking-tight">
+              Llamadas con Análisis
+            </h1>
+            <p className="text-slate-600 mt-1 text-sm">
+              Rango <b>{start}</b> a <b>{end}</b> ·{" "}
+              {totalPages ? (
+                <>Página <b>{page}</b> de <b>{totalPages}</b></>
+              ) : (
+                <>Página <b>{page}</b></>
+              )}
+              {totalItems != null && <> · Registros: <b>{totalItems}</b></>}
+            </p>
           </div>
-          <div>
-            <label className="font-medium text-sm">Fecha Fin</label>
-            <input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} className="w-full border border-gray-300 rounded p-2" />
-          </div>
-          <button onClick={buscarLlamadas} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition text-sm">Buscar</button>
-          {filtroActivo && (
-            <button onClick={() => setMostrarFiltros(!mostrarFiltros)} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300 transition">
-              {mostrarFiltros ? 'Ocultar filtros' : 'Mostrar filtros adicionales'}
-            </button>
-          )}
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="hidden md:block rounded-xl px-3 py-2 text-sm border border-slate-300 hover:bg-slate-50"
+          >
+            Volver al Dashboard
+          </button>
         </div>
-        {mostrarFiltros && (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="font-medium text-sm">Agencia</label>
-              <select
-                value={cliente}
-                onChange={(e) => setCliente(e.target.value)}
-                className="w-full border border-gray-300 rounded p-2"
-              >
-                <option value="">Todas</option>
-                {ArrayAgencias.map((agencia, idx) => (
-                  <option key={idx} value={agencia}>{agencia}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="font-medium text-sm">Área</label>
-              <select
-                value={nombreArea}
-                onChange={(e) => setNombreArea(e.target.value)}
-                className="w-full border border-gray-300 rounded p-2"
-              >
-                <option value="">Todas</option>
-                {ArrayArea.map((area, idx) => (
-                  <option key={idx} value={area}>{area}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="font-medium text-sm">ID Empleado</label>
-              <select
-                value={idEmpleado}
-                onChange={(e) => setIdEmpleado(e.target.value)}
-                className="w-full border border-gray-300 rounded p-2"
-              >
-                <option value="">Todos</option>
-                {ArrayIds.map((id, idx) => (
-                  <option key={idx} value={id}>{id}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="font-medium text-sm">Nombre Empleado</label>
-              <select
-                value={NombreEmpleado}
-                onChange={(e) => setnombreEmpleado(e.target.value)}
-                className="w-full border border-gray-300 rounded p-2"
-              >
-                <option value="">Todos</option>
-                {ArrayEmpleados.map((empleado, idx) => (
-                  <option key={idx} value={empleado}>{empleado}</option>
-                ))}
-              </select>
-            </div>
+
+        {/* Filtros */}
+        <div className="bg-white/95 border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-wrap items-end gap-3">
+          <div className="flex flex-col">
+            <label className="text-xs font-semibold text-slate-600">Desde</label>
+            <input
+              type="date"
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              max={end}
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="text-xs font-semibold text-slate-600">Hasta</label>
+            <input
+              type="date"
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              min={start}
+            />
+          </div>
+
+          <label className="text-sm text-slate-700 flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={onlyWithAnalysis}
+              onChange={(e) => setOnlyWithAnalysis(e.target.checked)}
+            />
+            Solo con análisis
+          </label>
+
+          <label className="text-sm text-slate-700 flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={onlyGT5}
+              onChange={(e) => setOnlyGT5(e.target.checked)}
+            />
+            Sólo &gt; 5s
+          </label>
+
+          <div className="flex-1 min-w-[240px]">
+            <label className="text-xs font-semibold text-slate-600">Buscar</label>
+            <input
+              placeholder="Agente, ANI, DNIS, área, organización…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            />
+          </div>
+
+          {/* Paginador */}
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              className="px-2.5 py-2 rounded-lg border border-slate-300 text-sm disabled:opacity-40"
+              onClick={goFirst}
+              disabled={!canPrev}
+              title="Primera página"
+            >
+              «
+            </button>
+            <button
+              className="px-2.5 py-2 rounded-lg border border-slate-300 text-sm disabled:opacity-40"
+              onClick={goPrev}
+              disabled={!canPrev}
+              title="Anterior"
+            >
+              ‹
+            </button>
+            <input
+              type="number"
+              min={1}
+              value={page}
+              onChange={(e) => setPage(Math.max(1, Number(e.target.value) || 1))}
+              className="w-16 text-center border border-slate-300 rounded-lg px-2 py-2 text-sm"
+              title="Ir a página"
+            />
+            <span className="text-sm text-slate-600">
+              {totalPages ? <>/ {totalPages}</> : null}
+            </span>
+            <button
+              className="px-2.5 py-2 rounded-lg border border-slate-300 text-sm disabled:opacity-40"
+              onClick={goNext}
+              disabled={!canNext}
+              title="Siguiente"
+            >
+              ›
+            </button>
+            <button
+              className="px-2.5 py-2 rounded-lg border border-slate-300 text-sm disabled:opacity-40"
+              onClick={goLast}
+              disabled={!(totalPages && page < totalPages)}
+              title="Última página"
+            >
+              »
+            </button>
+          </div>
+        </div>
+
+        {/* Estado error */}
+        {error && (
+          <div className="p-4 rounded-2xl bg-red-50 text-red-700 border border-red-200">
+            {error}
           </div>
         )}
-      </div>
 
-      {error && (
-        <div className="bg-red-100 text-red-700 p-3 rounded mb-2 text-center">{error}</div>
-      )}
+        {/* Tabla */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full table-fixed text-sm">
+              <colgroup>
+                <col className="w-[140px]" />
+                <col className="w-[160px]" />
+                <col className="w-[160px]" />
+                <col className="w-[80px]" />
+                <col className="w-[280px]" />
+                <col className="w-[220px]" />
+                <col className="w-[140px]" />
+                <col className="w-[130px]" />
+                <col className="w-[110px]" />
+              </colgroup>
+              <thead className="sticky top-0 bg-slate-50 text-[#1f2a56] z-10 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold">Call ID</th>
+                  <th className="px-4 py-3 text-left font-semibold">Inicio</th>
+                  <th className="px-4 py-3 text-left font-semibold">Fin</th>
+                  <th className="px-4 py-3 text-left font-semibold">Dur.</th>
+                  <th className="px-4 py-3 text-left font-semibold">Agente</th>
+                  <th className="px-4 py-3 text-left font-semibold">ANI → DNIS</th>
+                  <th className="px-4 py-3 text-left font-semibold">Tipo / País</th>
+                  <th className="px-4 py-3 text-left font-semibold">Wrap · Hold</th>
+                  <th className="px-4 py-3 text-left font-semibold">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading &&
+                  Array.from({ length: 10 }).map((_, i) => <RowSkeleton key={i} />)}
 
-      {loading && (
-        <div className="bg-white rounded-xl shadow-md flex-1 overflow-auto">
-          <div className="flex items-center justify-center h-full">
-            <div className="flex flex-col items-center">
-              <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-              <p className="mt-2 text-blue-600 font-medium text-center">Cargando datos...</p>
+                {!loading &&
+                  filtered.map((row, idx) => {
+                    const a = row.analysis;
+                    const hasA = !!a && Object.keys(a || {}).length > 0;
+                    const wrap = typeof row.cdr?.wrapup_time === "number" ? row.cdr?.wrapup_time : 0;
+                    const hold = typeof row.cdr?.total_hold_time === "number" ? row.cdr?.total_hold_time : 0;
+                    const holdsNum =
+                      typeof row.cdr?.number_of_holds === "number" ? row.cdr?.number_of_holds : 0;
+                    const dur = getDurSec(row.cdr);
+
+                    return (
+                      <tr
+                        key={row.id}
+                        className={idx % 2 ? "bg-white hover:bg-slate-50" : "bg-slate-50/40 hover:bg-slate-50"}
+                      >
+                        <td className="px-4 py-[14px] font-medium text-slate-800">{row.id}</td>
+                        <td className="px-4 py-[14px]">{fmtDT(row.cdr?.starttime)}</td>
+                        <td className="px-4 py-[14px]">{fmtDT(row.cdr?.endtime)}</td>
+                        <td className="px-4 py-[14px]">{fmtMMSS(dur)}</td>
+
+                        <td className="px-4 py-[14px]">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium line-clamp-1">
+                              {row.cdr?.agent_name || row.cdr?.empleado_nombre || "—"}
+                            </span>
+                            {hasA ? (
+                              <span
+                                className="inline-block w-2.5 h-2.5 rounded-full"
+                                style={{ backgroundColor: "#22c55e" }}
+                                title="Con análisis"
+                              />
+                            ) : null}
+                          </div>
+                          <div className="text-xs text-slate-500 line-clamp-1">
+                            {row.cdr?.organization || "—"}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-[14px]">
+                          <div className="text-slate-800">{row.cdr?.ani || "—"}</div>
+                          <div className="text-xs text-slate-500">→ {row.cdr?.dnis || "—"}</div>
+                        </td>
+
+                        <td className="px-4 py-[14px]">
+                          <span className="text-slate-800">{row.cdr?.calltype || "—"}</span>
+                          <div className="text-xs text-slate-500">{row.cdr?.pais || "N/A"}</div>
+                        </td>
+
+                        <td className="px-4 py-[14px]">
+                          <div className="text-slate-800">
+                            Wrap: <b>{wrap}s</b>
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            Hold: {hold}s · #{holdsNum}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-[14px]">
+                          <button
+                            onClick={() => navigate(`/reporteria/${row.id}`)}
+                            className="px-3 py-1.5 rounded-lg text-sm font-medium text-white hover:opacity-90"
+                            style={{ backgroundColor: PALETTE[0] }}
+                            title="Ver detalle"
+                          >
+                            Ver
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                {!loading && filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-6 text-center text-slate-500">
+                      No hay registros para los filtros actuales.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer de paginación */}
+          <div className="border-t border-slate-200 p-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-slate-600">
+              Tamaño de página: <b>{PAGE_SIZE}</b>
+              {totalItems != null && <> · Total: <b>{totalItems}</b></>}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="px-2.5 py-2 rounded-lg border border-slate-300 text-sm disabled:opacity-40"
+                onClick={goFirst}
+                disabled={!canPrev}
+              >
+                «
+              </button>
+              <button
+                className="px-2.5 py-2 rounded-lg border border-slate-300 text-sm disabled:opacity-40"
+                onClick={goPrev}
+                disabled={!canPrev}
+              >
+                ‹
+              </button>
+              <span className="text-sm text-slate-600">
+                {totalPages ? (
+                  <>Página <b>{page}</b> de <b>{totalPages}</b></>
+                ) : (
+                  <>Página <b>{page}</b></>
+                )}
+              </span>
+              <button
+                className="px-2.5 py-2 rounded-lg border border-slate-300 text-sm disabled:opacity-40"
+                onClick={goNext}
+                disabled={!canNext}
+              >
+                ›
+              </button>
+              <button
+                className="px-2.5 py-2 rounded-lg border border-slate-300 text-sm disabled:opacity-40"
+                onClick={goLast}
+                disabled={!(totalPages && page < totalPages)}
+              >
+                »
+              </button>
             </div>
           </div>
         </div>
-      )}
 
-      {!loading && calls.length > 0 && (
-        <div className="overflow-auto h-min-[500px]">
-          <table className="w-full text-sm lg:text-xs text-center whitespace-nowrap">
-            <thead className="sticky top-0 bg-gray-100 z-10 text-left">
-              <tr>
-                <th className="p-2 text-gray-600 font-medium text-center">Call ID</th>
-                <th className="p-2 text-gray-600 font-medium text-center">Hora Inicio</th>
-                <th className="p-2 text-gray-600 font-medium text-center">Hora Fin</th>
-                <th className="p-2 text-gray-600 font-medium text-center">Duración</th>
-                <th className="p-2 text-gray-600 font-medium text-center">N° Destino</th>
-                <th className="p-2 text-gray-600 font-medium text-center">Agencia</th>
-                <th className="p-2 text-gray-600 font-medium text-center">ID Empleado</th>
-                <th className="p-2 text-gray-600 font-medium text-center">Empleado</th>
-                <th className="p-2 text-gray-600 font-medium text-center">Área</th>
-                <th className="p-2 text-gray-600 font-medium text-center">Complejidad</th>
-                <th className="p-2 text-gray-600 font-medium text-center">Escalado</th>
-                <th className="p-2 text-gray-600 font-medium text-center">Sent. Inicial</th>
-                <th className="p-2 text-gray-600 font-medium text-center">Sent. Final</th>
-                <th className="p-2 text-gray-600 font-medium text-center">Tópicos</th>
-                <th className="p-2 text-gray-600 font-medium text-center">Resolución</th>
-              </tr>
-            </thead>
-            <tbody>
-              {calls.map((call) => (
-                <tr
-                  key={call.CallId}
-                  className="border-b border-gray-200 hover:bg-gray-50 transition"
-                  onClick={() => navigate(`/reporteria/${call.CallId}`)}
-                >
-                  <td className="p-1">{call.CallId}</td>
-                  <td className="p-1">{formatDateTime(call.FechaHoraInicio)}</td>
-                  <td className="p-1">{formatDateTime(call.FechaHoraFin)}</td>
-                  <td className="p-1">{calcularDuracion(call.FechaHoraInicio, call.FechaHoraFin)}</td>
-                  <td className="p-1">{call.ANI}</td>
-                  <td className="p-1">{call.Cliente}</td>
-                  <td className="p-1">{call.IdEmpleado}</td>
-                  <td className="p-1">{call.NombreEmpleado}</td>
-                  <td className="p-1">{call.NombreArea}</td>
-                  <td className="p-1">{call.ANALISIS_LLM.complejidad_caso}</td>
-                  <td className="p-1">{call.ANALISIS_LLM.escalado}</td>
-                  <td className="p-1">{call.ANALISIS_LLM.sentimiento_inicio}</td>
-                  <td className="p-1">{call.ANALISIS_LLM.sentimiento_fin}</td>
-                  <td className="p-1 text-left">
-                    <ul className="list-disc list-inside">
-                      {call.ANALISIS_LLM.topicos_principales.map((topico, i) => (
-                        <li key={i}>{topico}</li>
-                      ))}
-                    </ul>
-                  </td>
-                  <td className="p-1 text-left">{call.ANALISIS_LLM.caso_resuelto}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {!loading && calls.length === 0 && (
-        <div className="bg-white rounded-xl shadow-md flex-1 overflow-auto">
-          <div className="flex items-center justify-center h-full">
-            <h1 className="text-center text-lg text-gray-500">No hay datos para mostrar</h1>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
 
-export default CallSearchTable;
+export default CallsWithAnalysis;

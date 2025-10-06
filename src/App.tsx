@@ -1,18 +1,18 @@
 import './App.css'
 import Layout from './components/layout'
-import Dashboard from './pages/DashboardPages/Dashboard'
+import Dashboard from './pages/DashboardPages/Admin/Dashboard'
 import LoginForm from './pages/LoginPage'
 import { BrowserRouter, Route, Routes } from "react-router-dom"
-import Reporteria from './pages/Reporteria'
+import DashboardAgente from './pages/DashboardPages/Admin/DashboardAgente'
+import PrivateRoute from './components/PrivateRoute'
+import DashboardPais from './pages/DashboardPages/Admin/DashboardArea'
+import CallsWithAnalysis from './pages/Reporteria'
 import ReporteriaID from './pages/reporteriaById'
-import DashboardPerfomance from './pages/DashboardPerfomance'
-import HistorialClientePerformance from './pages/HistorialClientePerformance'
+import PerformanceSelector from './pages/AnalysisPage'
+import HistorialAgentePerformance from './pages/HistorialAgentePerformance'
+import HistorialPaisPerformance from './pages/HistorialClientePerformance'
 import LogsTable from './pages/Logs'
 import PerfilUsuario from './pages/Profile'
-import DashboardArea from './pages/DashboardPages/DashboardArea'
-import DashboardAgente from './pages/DashboardPages/DashboardAgente'
-import PrivateRoute from './components/PrivateRoute'
-import HistorialAgentePerformance from './pages/HistorialAgentePerformance'
 
 function App() {
   return (
@@ -22,19 +22,20 @@ function App() {
         {/* Todo lo privado va dentro del PrivateRoute */}
         <Route path="/" element={
           <PrivateRoute>
-            <Layout />
+            <Layout />  
           </PrivateRoute>
         }>
           <Route path="dashboard" element={<Dashboard />} />
-          <Route path="dashboard/Performance" element={<DashboardPerfomance />} />
-          <Route path="dashboard/Performance/HistorialCliente" element={<HistorialClientePerformance />} />
-          <Route path="dashboard/Performance/HistorialAgente" element={<HistorialAgentePerformance />} />
-          <Route path="auditoria" element={<LogsTable />} />
-          <Route path="reporteria" element={<Reporteria />} />
-          <Route path="/reporteria/:id" element={<ReporteriaID />} />
-          <Route path="/profile" element={<PerfilUsuario />} />
-          <Route path="dashboard/area" element={<DashboardArea />} />
+          <Route path="dashboard/area" element={<DashboardPais />} />
           <Route path="dashboard/agente" element={<DashboardAgente />} />
+          <Route path="reporteria" element={<CallsWithAnalysis />} />
+          <Route path="reporteria/:id" element={<ReporteriaID />} />
+          <Route path="analisis" element={<PerformanceSelector />} />
+          <Route path="historial/agentes" element={<HistorialAgentePerformance />} />
+          <Route path="historial/pais" element={<HistorialPaisPerformance />} />
+          <Route path="auditoria" element={<LogsTable />} />
+          <Route path="profile" element={<PerfilUsuario />} />
+          <Route path="*" element={<Dashboard />} />
         </Route>
       </Routes>
     </BrowserRouter>

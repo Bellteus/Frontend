@@ -1,106 +1,128 @@
 import React, { useState } from "react";
-import { loginUser } from "../services/AuthService";
-import  { DecodedToken, LoginCredentials } from "../types/AuthTypes";
-import { useNavigate } from 'react-router-dom';
-import { jwtDecode } from 'jwt-decode';
-import apiService from '../services/DataService';
+import { useNavigate } from "react-router-dom";
+import { AuthService } from "../services/Service";
+type Credentials = { email: string; password: string };
 
-const LoginForm: React.FC = () => {
-    const navigate = useNavigate();
-
-  const [credentials, setCredentials] = useState<LoginCredentials>(() => ({
-    email: "",
-    password: ""
-  }));
-
+const Login: React.FC = () => {
+  const navigate = useNavigate();
+  const [credentials, setCredentials] = useState<Credentials>({ email: "", password: "" });
   const [error, setError] = useState<string | null>(null);
+  const [showPass, setShowPass] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError(null);
     const { name, value } = e.target;
-    setCredentials(prev => ({ ...prev, [name]: value }));
+    setCredentials((prev) => ({ ...prev, [name]: value }));
   };
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError(null);
-  try {
-    // alert(`Enviando login para: ${credentials.email}`);
-    const response = await loginUser(credentials);
-    localStorage.setItem("token", response.access_token);
-    if (response) {
-      const user: DecodedToken = jwtDecode(localStorage.getItem("token") || "");
-      
-      // ⬇️ Añadido: log de toda la data del usuario
-      console.log("Usuario decodificado (JWT):", user);
-
-      localStorage.setItem("id", user.id);
-      localStorage.setItem("email", user.email);
-      // REGISTRO DE LOG DE INICIO DE SESIÓN
-      try {
-        await apiService.postSupervisorLog({
-          user_id: user.id,
-          user_email: user.email,
-          action: "Inició sesión"
-        });
-      } catch (logError) {
-        // Opcional: puedes notificar error de log, pero NO bloquear login si falla el log
-        console.warn("No se pudo registrar log de inicio de sesión:", logError);
-      }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      await AuthService.login(credentials.email, credentials.password); // guarda token
+      await AuthService.me(); // valida token
+      navigate("/dashboard", { replace: true });
+    } catch (err: any) {
+      const status = err?.status as number | undefined;
+      if (status === 400 || status === 401) setError("Correo o contraseña incorrectos.");
+      else if (typeof status === "number" && status >= 500) setError("Fallo del servidor. Intenta nuevamente.");
+      else setError(err?.message || "No se pudo iniciar sesión.");
+    } finally {
+      setLoading(false);
     }
-    navigate("/dashboard");
-  } catch (err: any) {
-    setError(err.detail || "Error al iniciar sesión");
-  }
-};
-
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white p-8 rounded-xl shadow-md w-full max-w-md"
-      >
-        <h2 className="text-2xl font-semibold text-gray-700 mb-6 text-center">Iniciar sesión</h2>
-
-        <div className="mb-4">
-          <label className="block text-gray-600 mb-1">Correo electrónico</label>
-          <input
-            type="email"
-            name="email"
-            placeholder="Ingrese su correo"
-            value={credentials.email}
-            onChange={handleChange}
-            required
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-          />
-        </div>
-
-        <div className="mb-4">
-          <label className="block text-gray-600 mb-1">Contraseña</label>
-          <input
-            type="password"
-            name="password"
-            placeholder="Ingrese su contraseña"
-            value={credentials.password}
-            onChange={handleChange}
-            required
-            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-          />
-        </div>
-
-        {error && (
-          <p className="text-red-500 text-sm mb-4 text-center">{error}</p>
-        )}
-
-        <button
-          type="submit"
-          className="w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition duration-200"
+    <div className="min-h-screen w-full bg-gradient-to-br from-indigo-50 via-white to-cyan-50 flex items-center justify-center p-6">
+      <div className="relative w-full max-w-md">
+        <form
+          onSubmit={handleSubmit}
+          className="bg-white/90 backdrop-blur rounded-2xl shadow-xl border border-slate-100 p-7 sm:p-8"
         >
-          Iniciar sesión
-        </button>
-      </form>
+          <div className="mb-6 text-center">
+            <div className="mx-auto mb-3 h-12 w-12 rounded-2xl bg-indigo-100 flex items-center justify-center">
+              <span className="text-indigo-600 text-xl font-bold">🔐</span>
+            </div>
+            <h1 className="text-2xl font-extrabold text-slate-800 tracking-tight">Iniciar sesión</h1>
+            <p className="text-slate-500 mt-1 text-sm">Accede a tu panel de analítica</p>
+          </div>
+
+          <div className="mb-4">
+            <label htmlFor="email" className="block text-sm font-semibold text-slate-700 mb-1.5">
+              Correo electrónico
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              value={credentials.email}
+              onChange={handleChange}
+              required
+              autoComplete="email"
+              placeholder="tucorreo@empresa.com"
+              className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+              disabled={loading}
+            />
+          </div>
+
+          <div className="mb-2">
+            <label htmlFor="password" className="block text-sm font-semibold text-slate-700 mb-1.5">
+              Contraseña
+            </label>
+            <div className="relative">
+              <input
+                id="password"
+                name="password"
+                type={showPass ? "text" : "password"}
+                value={credentials.password}
+                onChange={handleChange}
+                required
+                autoComplete="current-password"
+                placeholder="••••••••"
+                className="w-full rounded-xl border border-slate-300 px-4 py-2.5 pr-11 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+                disabled={loading}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass((v) => !v)}
+                className="absolute inset-y-0 right-0 px-3 text-slate-500 hover:text-slate-700 focus:outline-none"
+                aria-label={showPass ? "Ocultar contraseña" : "Mostrar contraseña"}
+                disabled={loading}
+              >
+                {showPass ? "🙈" : "👁️"}
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <div className="mt-3 mb-1 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="mt-5 w-full inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 text-white font-semibold py-2.5 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled={loading}
+          >
+            {loading && (
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-[2px] border-white border-r-transparent" />
+            )}
+            {loading ? "Ingresando..." : "Ingresar"}
+          </button>
+
+          <div className="mt-4 text-center text-xs text-slate-500">
+            Autenticación con <b>JWT</b> — almacenado de forma segura en el navegador
+          </div>
+        </form>
+
+        <div className="pointer-events-none absolute -z-10 -top-10 -right-12 h-40 w-40 rounded-full bg-indigo-200/40 blur-3xl" />
+        <div className="pointer-events-none absolute -z-10 -bottom-12 -left-12 h-40 w-40 rounded-full bg-cyan-200/40 blur-3xl" />
+      </div>
     </div>
   );
 };
 
-export default LoginForm;
+export default Login;

@@ -1,171 +1,272 @@
-import { NavLink, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { NavLink, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import {
-  FiMenu, FiGrid, FiList, FiUserCheck, FiArchive, FiUser,
-  FiChevronDown, FiChevronRight, FiLogOut, FiHome,
-} from 'react-icons/fi';
-import apiService from '../services/DataService'; // <-- Agrega esto
+  FiMenu,
+  FiGrid,
+  FiUsers,
+  FiFileText,
+  FiShield,
+  FiUser,
+  FiChevronDown,
+  FiChevronRight,
+  FiLogOut,
+  FiHome,
+  FiGlobe,
+  FiTrendingUp,
+} from "react-icons/fi";
+import { AuthService } from "../services/Service";
+import { useMe } from "../hook/useMe";
 
-const Sidevbar: React.FC<{ collapsed: boolean; setCollapsed: (expanded: boolean) => void }> = ({
-  collapsed, setCollapsed
-}) => {
-  const [dashboardExpanded, setDashboardExpanded] = useState(false);
-  const navigate = useNavigate();
-
-  const handleCollapsed = () => {
-    setCollapsed(!collapsed);
-  };
-
-  // LOGOUT CON REGISTRO DE LOG
-const handleLogout = async () => {
-  const user_id = localStorage.getItem("id");
-  const user_email = localStorage.getItem("email");
-  if (user_id && user_email) {
-    try {
-      await apiService.postSupervisorLog({
-        user_id,
-        user_email,
-        action: "Cerró sesión"
-      });
-      // console.log("Log de cierre de sesión registrado");
-    } catch (logError) {
-      console.warn("No se pudo registrar log de cierre de sesión:", logError);
-    }
-  }
-  // Solo borra lo necesario:
-  localStorage.removeItem("id");
-  localStorage.removeItem("email");
-  navigate('/login');
+type Props = {
+  collapsed: boolean;
+  setCollapsed: (expanded: boolean) => void;
 };
 
+const SIDE_W_EXP = 240;      // w-60 (15rem)
+const SIDE_W_COLLAPSED = 56; // w-14 (3.5rem)
 
-  const handleGoToAuditoria = () => {
-    navigate('/auditoria'); // Cambia esta ruta si tu auditoría tiene otra URL
+const Sidevbar: React.FC<Props> = ({ collapsed, setCollapsed }) => {
+  const [dashboardExpanded, setDashboardExpanded] = useState(false);
+  const navigate = useNavigate();
+  const { isAdmin } = useMe();
+
+  // ——— Cerrado por defecto
+  useEffect(() => {
+    setCollapsed(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ——— Ajustar padding del layout para no solapar contenido
+  useEffect(() => {
+    const isDesktop = () => window.matchMedia("(min-width: 1024px)").matches;
+    const applyPadding = () => {
+      const pad = isDesktop() ? (collapsed ? SIDE_W_COLLAPSED : SIDE_W_EXP) : 0;
+      document.documentElement.style.setProperty("--sidenav-w", `${pad}px`);
+      document.body.style.paddingLeft = pad ? `${pad}px` : "0px";
+    };
+    applyPadding();
+    const onResize = () => applyPadding();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [collapsed]);
+
+  const handleCollapsed = () => setCollapsed(!collapsed);
+
+  const handleLogout = async () => {
+    try { await AuthService.logout(); } catch {}
+    localStorage.removeItem("id");
+    localStorage.removeItem("email");
+    navigate("/login", { replace: true });
   };
 
+  const handleGoToAuditoria = () => navigate("/auditoria");
+
   return (
-    <aside
-      className={`bg-slate-50 transition-all duration-300 ease-in-out overflow-hidden text-sm
-        ${collapsed ? 'w-14' : 'w-42'} h-screen flex flex-col fixed `}
-    >
-      <nav className="flex flex-col flex-grow ">
-        {/* Botón de colapsar */}
-        <button
+    <>
+      {/* Overlay mobile (pulsa para cerrar) */}
+      {!collapsed && (
+        <div
+          className="fixed inset-0 bg-slate-900/30 z-30 lg:hidden"
           onClick={handleCollapsed}
-          className="flex items-center gap-2 p-3 hover:bg-gray-200 transition-colors"
-        >
-          <FiMenu size={20} className="min-w-[20px]" />
-          <span className={`transition-all duration-300 whitespace-nowrap overflow-hidden
-            ${collapsed ? 'opacity-0 w-0' : 'opacity-100 w-auto'}`}>
-            Menú
-          </span>
-        </button>
+          aria-hidden="true"
+        />
+      )}
 
-        {/* DASHBOARD */}
-        <div>
-          <div
-            onClick={() => setDashboardExpanded(!dashboardExpanded)}
-            className="flex items-center p-3 cursor-pointer hover:bg-gray-200 transition-colors gap-2"
+      <aside
+        aria-label="Barra lateral de navegación"
+        className={[
+          "fixed inset-y-0 left-0 z-40 bg-slate-50 border-r border-slate-200",
+          "transform transition-[width,transform] duration-300 ease-in-out",
+          // Mobile: panel deslizante (oculto cuando está colapsado)
+          collapsed ? "-translate-x-full lg:translate-x-0" : "translate-x-0",
+          // Desktop: rail ↔ ancho completo
+          collapsed ? "lg:w-14" : "lg:w-60",
+          // Mobile: ancho completo del panel
+          "w-60 lg:w-auto",
+          "h-screen flex flex-col overflow-hidden text-sm",
+        ].join(" ")}
+      >
+        <nav className="flex flex-col flex-grow">
+          {/* Botón de colapsar / abrir */}
+          <button
+            onClick={handleCollapsed}
+            className="flex items-center gap-2 p-3 hover:bg-slate-100 transition-colors"
+            aria-label="Alternar menú"
           >
-            <FiGrid size={20} className="min-w-[20px]" />
-            <span className={`transition-all duration-300 ${collapsed ? 'opacity-0 w-0' : 'opacity-100 w-auto'}`}>
-              Dashboard
+            <FiMenu size={20} className="min-w-[20px]" />
+            <span
+              className={`transition-all duration-300 whitespace-nowrap overflow-hidden
+              ${collapsed ? "opacity-0 w-0 lg:w-0" : "opacity-100 w-auto"}`}
+            >
+              Menú
             </span>
-            {!collapsed && (
-              <div className="ml-auto">
-                {dashboardExpanded ? <FiChevronDown size={16} /> : <FiChevronRight size={16} />}
-              </div>
-            )}
+          </button>
+
+          {/* DASHBOARD */}
+          <div>
+            <div
+              onClick={() => setDashboardExpanded((v) => !v)}
+              className="flex items-center p-3 cursor-pointer hover:bg-slate-100 transition-colors gap-2"
+            >
+              <FiGrid size={20} className="min-w-[20px]" />
+              <span
+                className={`transition-all duration-300
+                ${collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"}`}
+              >
+                Dashboard
+              </span>
+              {!collapsed && (
+                <div className="ml-auto">
+                  {dashboardExpanded ? (
+                    <FiChevronDown size={16} />
+                  ) : (
+                    <FiChevronRight size={16} />
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Submenú Dashboard */}
+            <div
+              className={`overflow-hidden transition-all duration-300 ease-in-out
+                ${!collapsed && dashboardExpanded ? "max-h-40 opacity-100" : "max-h-0 opacity-0"}`}
+            >
+              {!collapsed && dashboardExpanded && (
+                <div className="ml-8 mt-1 space-y-1">
+                  <NavLink
+                    to="/dashboard"
+                    end
+                    className={({ isActive }) =>
+                      `flex items-center gap-2 p-2 rounded hover:bg-slate-100 text-xs ${
+                        isActive ? "bg-slate-100 font-medium" : ""
+                      }`
+                    }
+                  >
+                    <FiHome size={18} className="min-w-[18px]" />
+                    <span>Inicio</span>
+                  </NavLink>
+
+                  <NavLink
+                    to="/dashboard/agente"
+                    className={({ isActive }) =>
+                      `flex items-center gap-2 p-2 rounded hover:bg-slate-100 text-xs ${
+                        isActive ? "bg-slate-100 font-medium" : ""
+                      }`
+                    }
+                  >
+                    <FiUsers size={18} className="min-w-[18px]" />
+                    <span>Agentes</span>
+                  </NavLink>
+
+                  {isAdmin && (
+                    <NavLink
+                      to="/dashboard/pais"
+                      className={({ isActive }) =>
+                        `flex items-center gap-2 p-2 rounded hover:bg-slate-100 text-xs ${
+                          isActive ? "bg-slate-100 font-medium" : ""
+                        }`
+                      }
+                    >
+                      <FiGlobe size={18} className="min-w-[18px]" />
+                      <span>País</span>
+                    </NavLink>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-          <div
-            className={`overflow-hidden transition-all duration-300 ease-in-out
-              ${!collapsed && dashboardExpanded ? 'max-h-32 opacity-100' : 'max-h-0 opacity-0'}`}
+
+          {/* Análisis */}
+          <NavLink
+            to="/analisis"
+            className={({ isActive }) =>
+              `flex items-center gap-2 p-3 hover:bg-slate-100 transition-colors ${
+                isActive ? "bg-slate-100 font-medium" : ""
+              }`
+            }
           >
-            {!collapsed && dashboardExpanded && (
-              <div className="ml-8 mt-1 space-y-1">
-                <NavLink
-                  to="/dashboard"
-                  end
-                  className={({ isActive }) =>
-                    `flex items-center gap-2 p-2 hover:bg-gray-200 text-xs ${
-                      isActive ? 'bg-gray-200 font-medium' : ''
-                    }`
-                  }
-                >
-                  <FiHome size={20} className="min-w-[20px]" />
-                  <span>Inicio</span>
-                </NavLink>
-                <NavLink
-                  to="dashboard/Performance"
-                  className={({ isActive }) =>
-                    `flex items-center gap-2 p-2 hover:bg-gray-200 text-xs ${
-                      isActive ? 'bg-gray-200 font-medium' : ''
-                    }`
-                  }
-                >
-                  <FiUserCheck size={20} className="min-w-[20px]" />
-                  <span>Performance</span>
-                </NavLink>
-              </div>
-            )}
-          </div>
+            <FiTrendingUp size={20} className="min-w-[20px]" />
+            <span
+              className={`transition-all duration-300 ${
+                collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"
+              }`}
+            >
+              Análisis
+            </span>
+          </NavLink>
+
+          {/* Reportería */}
+          <NavLink
+            to="/reporteria"
+            className={({ isActive }) =>
+              `flex items-center gap-2 p-3 hover:bg-slate-100 transition-colors ${
+                isActive ? "bg-slate-100 font-medium" : ""
+              }`
+            }
+          >
+            <FiFileText size={20} className="min-w-[20px]" />
+            <span
+              className={`transition-all duration-300 ${
+                collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"
+              }`}
+            >
+              Reportería
+            </span>
+          </NavLink>
+
+          {/* Auditoría */}
+          <button
+            onClick={handleGoToAuditoria}
+            className="flex items-center gap-2 p-3 hover:bg-slate-100 transition-colors text-left w-full"
+          >
+            <FiShield size={20} className="min-w-[20px]" />
+            <span
+              className={`transition-all duration-300 ${
+                collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"
+              }`}
+            >
+              Auditoría
+            </span>
+          </button>
+
+          {/* Perfil */}
+          <NavLink
+            to="/profile"
+            className={({ isActive }) =>
+              `flex items-center gap-2 p-3 hover:bg-slate-100 transition-colors ${
+                isActive ? "bg-slate-100 font-medium" : ""
+              }`
+            }
+          >
+            <FiUser size={20} className="min-w-[20px]" />
+            <span
+              className={`transition-all duration-300 ${
+                collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"
+              }`}
+            >
+              Perfil
+            </span>
+          </NavLink>
+        </nav>
+
+        {/* Logout */}
+        <div className="p-3 border-t border-slate-200">
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 hover:text-red-700 transition-colors w-full"
+          >
+            <FiLogOut size={20} className="min-w-[20px]" />
+            <span
+              className={`transition-all duration-300 ${
+                collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"
+              }`}
+            >
+              Cerrar sesión
+            </span>
+          </button>
         </div>
-
-        {/* Reportería */}
-        <NavLink
-          to="/reporteria"
-          className={({ isActive }) =>
-            `flex items-center gap-2 p-3 hover:bg-gray-100 transition-colors ${
-              isActive ? 'bg-gray-200 font-medium' : ''
-            }`
-          }
-        >
-          <FiList size={20} className="min-w-[20px]" />
-          <span className={`transition-all duration-300 ${collapsed ? 'opacity-0 w-0' : 'opacity-100 w-auto'}`}>
-            Reportería
-          </span>
-        </NavLink>
-
-        {/* Auditoría - SIN desplegable, va directo */}
-        <button
-          onClick={handleGoToAuditoria}
-          className="flex items-center gap-2 p-3 hover:bg-gray-200 transition-colors text-left w-full"
-        >
-          <FiArchive size={20} className="min-w-[20px]" />
-          <span className={`transition-all duration-300 ${collapsed ? 'opacity-0 w-0' : 'opacity-100 w-auto'}`}>
-            Auditoría
-          </span>
-        </button>
-
-        {/* Perfil */}
-        <NavLink
-          to="/profile"
-          className={({ isActive }) =>
-            `flex items-center gap-2 p-3 hover:bg-gray-100 transition-colors ${
-              isActive ? 'bg-gray-200 font-medium' : ''
-            }`
-          }
-        >
-          <FiUser size={20} className="min-w-[20px]" />
-          <span className={`transition-all duration-300 ${collapsed ? 'opacity-0 w-0' : 'opacity-100 w-auto'}`}>
-            Perfil
-          </span>
-        </NavLink>
-      </nav>
-
-      {/* Logout */}
-      <div className="p-3 border-t border-slate-300">
-        <button
-          onClick={handleLogout}
-          className="flex items-center gap-2 hover:text-red-800 transition-colors w-full"
-        >
-          <FiLogOut size={20} className="min-w-[20px]" />
-          <span className={`transition-all duration-300 ${collapsed ? 'opacity-0 w-0' : 'opacity-100 w-auto'}`}>
-            Cerrar sesión
-          </span>
-        </button>
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 };
 
