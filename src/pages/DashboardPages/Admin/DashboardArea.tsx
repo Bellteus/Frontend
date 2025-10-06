@@ -534,7 +534,7 @@ const DashboardPais: React.FC = () => {
               const v = e.target.value;
               if (v === "general") navigate("/dashboard");
               else if (v === "agente") navigate("/dashboard/agente");
-              else navigate("/dashboard/area");
+              else navigate("/dashboard/pais");
             }}
             className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
           >

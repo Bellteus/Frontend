@@ -26,7 +26,7 @@ function App() {
           </PrivateRoute>
         }>
           <Route path="dashboard" element={<Dashboard />} />
-          <Route path="dashboard/area" element={<DashboardPais />} />
+          <Route path="dashboard/pais" element={<DashboardPais />} />
           <Route path="dashboard/agente" element={<DashboardAgente />} />
           <Route path="reporteria" element={<CallsWithAnalysis />} />
           <Route path="reporteria/:id" element={<ReporteriaID />} />

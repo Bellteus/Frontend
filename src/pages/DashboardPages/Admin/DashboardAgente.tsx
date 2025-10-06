@@ -479,7 +479,7 @@ const DashboardAgente: React.FC = () => {
             onChange={(e) => {
               const v = e.target.value;
               if (v === "general") navigate("/dashboard");
-              else if (v === "pais") navigate("/dashboard/area");
+              else if (v === "pais") navigate("/dashboard/pais");
               else navigate("/dashboard/agente");
             }}
             className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
