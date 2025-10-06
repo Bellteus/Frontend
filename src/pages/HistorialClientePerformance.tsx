@@ -1,3 +1,4 @@
+// src/pages/HistorialPaisPerformance.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import jsPDF from "jspdf";
@@ -14,6 +15,7 @@ import {
   FiSmile,
   FiTrendingUp,
 } from "react-icons/fi";
+import { useMe } from "../hook/useMe";
 
 /* ======================== Paleta coherente ======================== */
 const CLASSES = {
@@ -26,10 +28,24 @@ const CLASSES = {
   chipNeg: "border-rose-300 bg-rose-50 text-rose-800",
 };
 
+/* ===== Country helpers ===== */
+const CODE_TO_LABEL: Record<string, string> = {
+  AR: "Argentina",
+  CL: "Chile",
+  PE: "Perú",
+  CO: "Colombia",
+  MX: "México",
+};
+const normalizeCountryLabel = (raw?: string | null) => {
+  if (!raw) return "";
+  const t = String(raw).trim();
+  if (CODE_TO_LABEL[t]) return CODE_TO_LABEL[t];
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+
 /* ======================== Tipos extendidos ======================== */
 type CountryReportStored = CountryPerformanceReport & {
   _id?: string;
-  // metadatos que guardamos al persistir
   fecha_inicio?: string; // ISO
   fecha_fin?: string; // ISO
   created_at?: string; // ISO
@@ -40,8 +56,7 @@ const pct = (v?: number | null) =>
   typeof v === "number" && isFinite(v) ? `${(v * 100).toFixed(1)}%` : "—";
 const n2 = (v?: number | null) =>
   typeof v === "number" && isFinite(v) ? v.toFixed(2) : "—";
-const fmtDate = (iso?: string) =>
-  iso ? new Date(iso).toLocaleString() : "—";
+const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleString() : "—");
 const fmtDateShort = (iso?: string) =>
   iso ? new Date(iso).toLocaleDateString() : "—";
 
@@ -70,9 +85,7 @@ const sentimentChip = (s?: string) => {
 const toPctMap = (map?: Record<string, number | null> | null) => {
   if (!map || typeof map !== "object") return null;
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(map)) {
-    out[k] = pct(v);
-  }
+  for (const [k, v] of Object.entries(map)) out[k] = pct(v);
   return out;
 };
 
@@ -115,7 +128,6 @@ function exportarPaisPDF(data: CountryPerformanceReport) {
     ],
   });
 
-  // Secciones de distribuciones (normalizadas)
   const sentPct = normalizeSentiment(data.sentimiento_distribucion);
   if (sentPct) {
     const y =
@@ -165,14 +177,8 @@ function exportarPaisPDF(data: CountryPerformanceReport) {
   addList("Palabras clave frecuentes", data.palabras_clave_frecuentes);
   addList("Alertas de calidad recurrentes", data.alertas_calidad_recurrentes);
   addList("Agentes destacados", data.agentes_destacados);
-  addList(
-    "Agentes con bajo performance",
-    data.agentes_con_bajo_performance
-  );
-  addList(
-    "Organizaciones destacadas",
-    data.organizaciones_destacadas || undefined
-  );
+  addList("Agentes con bajo performance", data.agentes_con_bajo_performance);
+  addList("Organizaciones destacadas", data.organizaciones_destacadas || undefined);
   addList("Organizaciones con riesgo", data.organizaciones_con_riesgo || undefined);
 
   const finalY =
@@ -199,14 +205,30 @@ const HistorialPaisPerformance = () => {
   const [paisFiltro, setPaisFiltro] = useState("");
 
   const navigate = useNavigate();
+  const { isAdmin, loadingMe, errorMe, me } = useMe();
 
-  // Obtener todos los reportes
+  // País del scope (si NO admin)
+  const scopedCountryLabel = useMemo(() => {
+    if (isAdmin) return "";
+    const scope = Array.isArray((me as any)?.country_scope)
+      ? (me as any).country_scope
+      : [];
+    const first = scope.find((s:any) => s !== "*");
+    return normalizeCountryLabel(first || "");
+  }, [isAdmin, me]);
+
+  // Set inicial de país bloqueado para no-admin
+  useEffect(() => {
+    if (!isAdmin) setPaisFiltro(scopedCountryLabel);
+  }, [isAdmin, scopedCountryLabel]);
+
+  // Obtener todos los reportes (el backend ya debería respetar el JWT)
   const fetchReports = async () => {
     setLoading(true);
     try {
       const data = await CountryPerformanceService.listReports();
       setReports(Array.isArray(data) ? data : []);
-    } catch (e) {
+    } catch {
       setReports([]);
     } finally {
       setLoading(false);
@@ -217,69 +239,86 @@ const HistorialPaisPerformance = () => {
     fetchReports();
   }, []);
 
-  // Países únicos para el select
-  const paisesUnicos = useMemo(
-    () =>
-      Array.from(new Set((reports || []).map((r) => r.pais || "—")))
-        .filter((x) => x && x !== "—")
-        .sort((a, b) => a.localeCompare(b, "es")),
-    [reports]
-  );
+  // Países únicos (normalizados) para admin
+  const paisesUnicos = useMemo(() => {
+    const set = new Set<string>();
+    (reports || []).forEach((r) => {
+      const lbl = normalizeCountryLabel(r.pais);
+      if (lbl) set.add(lbl);
+    });
+    return Array.from(set.values()).sort((a, b) => a.localeCompare(b, "es"));
+  }, [reports]);
 
-  // Filtrado en frontend (por país y rango)
+  // Filtrado por país (admin selecciona; no-admin fijo al scope) + rango
   const filtered = useMemo(() => {
+    const activeCountry = isAdmin ? paisFiltro : scopedCountryLabel;
     const list = reports.filter((r) => {
-      const paisOk = paisFiltro ? r.pais === paisFiltro : true;
+      const paisOk = activeCountry
+        ? normalizeCountryLabel(r.pais) === activeCountry
+        : true;
       const ref = getRangeStart(r) || r.created_at;
       const dateOk = ref ? inRange(new Date(ref), fechaInicio, fechaFin) : true;
       return paisOk && dateOk;
     });
 
-    // Orden más reciente primero
     return list.sort((a, b) => {
       const ad = new Date(a.created_at || getRangeStart(a) || 0).getTime();
       const bd = new Date(b.created_at || getRangeStart(b) || 0).getTime();
       return bd - ad;
     });
-  }, [reports, paisFiltro, fechaInicio, fechaFin]);
+  }, [reports, paisFiltro, fechaInicio, fechaFin, isAdmin, scopedCountryLabel]);
 
-  // Buscar (UX spinner ligero)
-  const handleBuscar = () => {
+  // Buscar (aplicar filtros) => LOG
+  const handleBuscar = async () => {
     setSearching(true);
-    setTimeout(() => setSearching(false), 350);
+    try {
+      const pais = (isAdmin ? paisFiltro : scopedCountryLabel) || "Todos";
+      const desde = fechaInicio || "—";
+      const hasta = fechaFin || "—";
+      await LogsService.audit(
+        `Historial países — filtros { pais="${pais}", desde=${desde}, hasta=${hasta} }`
+      );
+    } catch {
+    } finally {
+      setTimeout(() => setSearching(false), 350);
+    }
   };
 
-  // Descargar PDF + log
+  // Descargar PDF => LOG
   const handlePDF = async (r: CountryReportStored) => {
-    exportarPaisPDF(r);
-    const user_id = localStorage.getItem("id");
-    const user_email = localStorage.getItem("email");
-    if (user_id && user_email) {
-      try {
-        await LogsService.postSupervisorLog({
-          user_id,
-          user_email,
-          action: `Descargó reporte PDF de país "${r.pais}"`,
-        });
-      } catch {}
-    }
+    try {
+      exportarPaisPDF(r);
+      await LogsService.audit(`Descargó reporte PDF de país "${r.pais}"`);
+    } catch {}
   };
 
-  // Regresar + log
+  // Regresar => LOG
   const handleBack = async () => {
-    const user_id = localStorage.getItem("id");
-    const user_email = localStorage.getItem("email");
-    if (user_id && user_email) {
-      try {
-        await LogsService.postSupervisorLog({
-          user_id,
-          user_email,
-          action: "Regresó desde historial de reportes por país",
-        });
-      } catch {}
-    }
+    try {
+      await LogsService.audit("Regresó desde historial de reportes por país");
+    } catch {}
     navigate(-1);
   };
+
+  /* ===== Guards de sesión ===== */
+  if (loadingMe) {
+    return (
+      <div className="min-h-screen p-4">
+        <div className="bg-white rounded-xl shadow border border-slate-200 p-4">
+          <div className="h-20 bg-slate-100 animate-pulse rounded-lg" />
+        </div>
+      </div>
+    );
+  }
+  if (errorMe) {
+    return (
+      <div className="min-h-screen p-4">
+        <div className="bg-white rounded-xl shadow border border-slate-200 p-4 text-red-600">
+          No se pudo cargar tu sesión. Vuelve a iniciar sesión.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-4 space-y-4">
@@ -295,26 +334,44 @@ const HistorialPaisPerformance = () => {
           <h1 className="text-xl font-bold text-slate-900 flex-1 text-center">
             Historial de reportes generados por país
           </h1>
-          <div className="w-[110px]" />
+          {/* Chip país activo para no-admin */}
+          {!isAdmin && scopedCountryLabel && (
+            <span className="inline-flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-700">
+              País: <b>{scopedCountryLabel}</b>
+            </span>
+          )}
+          {isAdmin && <div className="w-[110px]" />}
         </div>
 
         {/* Filtros */}
         <div className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-1">País</label>
-              <select
-                value={paisFiltro}
-                onChange={(e) => setPaisFiltro(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2"
-              >
-                <option value="">Todos</option>
-                {paisesUnicos.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
+              {isAdmin ? (
+                <select
+                  value={paisFiltro}
+                  onChange={(e) => setPaisFiltro(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                >
+                  <option value="">Todos</option>
+                  {paisesUnicos.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <select
+                  value={scopedCountryLabel}
+                  disabled
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 bg-slate-50 text-slate-700"
+                >
+                  <option value={scopedCountryLabel}>
+                    {scopedCountryLabel || "—"}
                   </option>
-                ))}
-              </select>
+                </select>
+              )}
             </div>
 
             <div>
@@ -337,7 +394,7 @@ const HistorialPaisPerformance = () => {
               />
             </div>
 
-            <div className="flex items-end">
+            <div>
               <button
                 onClick={handleBuscar}
                 className={`w-full px-4 py-2 rounded-lg ${CLASSES.primary}`}
@@ -355,9 +412,7 @@ const HistorialPaisPerformance = () => {
         {(loading || searching) && (
           <div className="flex flex-col items-center justify-center h-48">
             <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-            <span className="mt-3 text-indigo-700 font-semibold">
-              Cargando…
-            </span>
+            <span className="mt-3 text-indigo-700 font-semibold">Cargando…</span>
           </div>
         )}
 
@@ -403,7 +458,7 @@ const HistorialPaisPerformance = () => {
                           <span className="p-1.5 rounded-md bg-indigo-50 text-indigo-700">
                             <FiGlobe />
                           </span>
-                          {r.pais}
+                          {normalizeCountryLabel(r.pais)}
                         </div>
                       </td>
                       <td className="px-4 py-2 text-center">

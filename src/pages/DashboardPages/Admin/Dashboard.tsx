@@ -16,7 +16,7 @@ import {
   Filler,
 } from "chart.js";
 import { useMe } from "../../../hook/useMe";
-import { CallsService } from "../../../services/Service";
+import { CallsService, LogsService } from "../../../services/Service";
 import { numberFormat } from "../../../utils/format";
 import type { CallRecord2 } from "../../../types/CallRecord";
 
@@ -37,12 +37,12 @@ ChartJS.register(
 const DEFAULT_START = "2025-08-01";
 const DEFAULT_END = "2025-08-07";
 
-/** Paleta unificada (como DashboardPais/Agente): azules + 1 verde */
+/** Paleta unificada (azules + 1 verde) */
 const PALETTE = [
   "#0ea5e9", "#0284c7", "#38bdf8", "#3b82f6", "#2563eb", "#1d4ed8",
   "#60a5fa", "#93c5fd", "#bfdbfe", "#a5b4fc", "#6366f1", "#3f51b5",
   "#2d5a9e", "#64748b", "#94a3b8", "#475569", "#1e3a8a", "#0b4f82",
-  "#4f46e5", "#7dd3fc", "#c7d2fe", "#22c55e" // único verde
+  "#4f46e5", "#7dd3fc", "#c7d2fe", "#22c55e"
 ];
 
 const rangeDaysUTC = (startISO: string, endISO: string) => {
@@ -68,19 +68,16 @@ const secondsToMMSS = (sec: number) => {
   return `${m}:${String(r).padStart(2, "0")}`;
 };
 
-/** Hora (0-23) desde string ISO (robusto a +00:00, Z o espacios); UTC */
+/** Hora (0-23) desde ISO (UTC) */
 function extractHourUTC(raw?: string | null): number | null {
   if (!raw) return null;
-  // 1) regex rápido del segmento de hora
   const m = raw.match(/T(\d{2}):\d{2}:\d{2}/);
   if (m) {
     const h = Number(m[1]);
     return Number.isFinite(h) ? (h % 24) : null;
   }
-  // 2) fallback con Date y getUTCHours
   const dt = new Date(raw);
   if (!isNaN(dt.getTime())) return dt.getUTCHours();
-  // 3) otro fallback con " YYYY-MM-DD HH:mm:ss "
   const m2 = raw.match(/\s(\d{2}):\d{2}:\d{2}/);
   if (m2) {
     const h = Number(m2[1]);
@@ -97,7 +94,7 @@ interface TimeseriesPoint {
 
 /* ======================= Componente ======================= */
 const Dashboard: React.FC = () => {
-  const { isAdmin, loadingMe, errorMe } = useMe();
+  const { loadingMe, errorMe } = useMe(); // ⬅️ sin isAdmin
   const navigate = useNavigate();
 
   // filtros
@@ -111,6 +108,10 @@ const Dashboard: React.FC = () => {
   const [topAgentsRaw, setTopAgentsRaw] = useState<any[]>([]);
   const [seriesDia, setSeriesDia] = useState<TimeseriesPoint[]>([]);
 
+  // meta devuelta por /calls/by-date
+  const [metaUsuario, setMetaUsuario] = useState<string>("");
+  const [metaScopes, setMetaScopes] = useState<string | string[] | null>(null);
+
   // ui
   const [loading, setLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(true);
@@ -123,6 +124,18 @@ const Dashboard: React.FC = () => {
     try {
       const res = await CallsService.callsByDate(start, end);
       setItems(Array.isArray(res?.records) ? (res.records as CallRecord2[]) : []);
+
+      setMetaUsuario(String(res?.usuario || ""));
+      setMetaScopes(res?.scopes ?? null);
+
+      // Log de consulta (no bloquea UI)
+      try {
+        const scopesTxt = Array.isArray(res?.scopes) ? res.scopes.join(",") : (res?.scopes ?? "");
+        await LogsService.audit(
+          `Consultó Dashboard General (${start} → ${end}) — user=${res?.usuario || ""}, scopes=${scopesTxt}`
+        );
+      } catch {}
+
       setLoading(false);
       setChartLoading(true);
       requestAnimationFrame(() => setChartLoading(false));
@@ -137,7 +150,7 @@ const Dashboard: React.FC = () => {
       const [kpi, qual, topA] = await Promise.all([
         CallsService.kpiSummary(start, end),
         CallsService.qualityMetrics(start, end),
-        CallsService.topAgents(start, end, 5), // Top 5
+        CallsService.topAgents(start, end, 5),
       ]);
       setKpiSummary(kpi || null);
       setQualityMetrics(qual || null);
@@ -159,12 +172,12 @@ const Dashboard: React.FC = () => {
   }
 
   useEffect(() => {
-    if (!loadingMe && isAdmin) {
+    if (!loadingMe) {
       fetchCalls();
       fetchKpis();
       fetchTimeseries();
     }
-  }, [start, end, isAdmin, loadingMe]); // eslint-disable-line
+  }, [start, end, loadingMe]); // ⬅️ sin isAdmin
 
   /* ======================= Derivados ======================= */
   const days = useMemo(() => rangeDaysUTC(start, end), [start, end]);
@@ -195,7 +208,7 @@ const Dashboard: React.FC = () => {
     return hasServer ? callsByDayFromServer : callsByDayLocal;
   }, [callsByDayFromServer, callsByDayLocal]);
 
-  // Actividad por hora (UTC) — conteo absoluto por hora 0..23
+  // Actividad por hora (UTC)
   const hoursLabels = useMemo(
     () => Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0")),
     []
@@ -227,182 +240,6 @@ const Dashboard: React.FC = () => {
       .sort((a: any, b: any) => b.llamadas - a.llamadas)
       .slice(0, 5);
   }, [topAgentsRaw]);
-
-  const totalCalls = items.length;
-  const uniqueAgents = useMemo(() => {
-    const s = new Set(
-      items.map((i) => String(i.agent_id ?? i.agent_name ?? i.empleado_nombre ?? "N/A"))
-    );
-    return s.size;
-  }, [items]);
-
-  const avgSecAll = useMemo(() => {
-    const secs: number[] = [];
-    items.forEach((it) => {
-      if (typeof it.duration === "number" && !isNaN(it.duration)) {
-        secs.push(it.duration);
-      } else {
-        const s = it.starttime ? new Date(it.starttime).getTime() : NaN;
-        const e = it.endtime ? new Date(it.endtime).getTime() : NaN;
-        if (!isNaN(s) && !isNaN(e) && e >= s) secs.push((e - s) / 1000);
-      }
-    });
-    if (!secs.length) return 0;
-    return secs.reduce((a, b) => a + b, 0) / secs.length;
-  }, [items]);
-  const avgTmoMMSS = secondsToMMSS(avgSecAll);
-
-  // KPIs desde kpiSummary/quality
-  const answeredRatePct = useMemo(() => {
-    const val = (kpiSummary?.tasa_atencion ?? qualityMetrics?.summary?.answer_rate ?? 0) * 100;
-    return Number.isFinite(val) ? val : 0;
-  }, [kpiSummary, qualityMetrics]);
-
-  const uniqueCallers = useMemo(
-    () => qualityMetrics?.callers?.unique_callers ?? 0,
-    [qualityMetrics]
-  );
-  const repeatCallers = useMemo(
-    () => qualityMetrics?.callers?.repeat_callers ?? 0,
-    [qualityMetrics]
-  );
-  const repeatRatePct = useMemo(() => {
-    const val = (qualityMetrics?.callers?.repeat_rate ?? 0) * 100;
-    return Number.isFinite(val) ? val : 0;
-  }, [qualityMetrics]);
-
-  const holdAvgMin = useMemo(() => {
-    const sec = kpiSummary?.hold_prom ?? qualityMetrics?.summary?.hold_avg ?? null;
-    return typeof sec === "number" ? secondsToMin1(sec) : 0;
-  }, [kpiSummary, qualityMetrics]);
-
-  const holdRatePct = useMemo(() => {
-    const val = (kpiSummary?.hold_rate ?? qualityMetrics?.summary?.hold_rate ?? 0) * 100;
-    return Number.isFinite(val) ? val : 0;
-  }, [kpiSummary, qualityMetrics]);
-
-  // Buckets de duración
-  const qualityBucketsData = useMemo(() => {
-    const buckets: Array<{ label: string; count: number }> = qualityMetrics?.buckets || [];
-    return {
-      labels: buckets.map((b) => b.label),
-      datasets: [
-        {
-          label: "Llamadas",
-          data: buckets.map((b) => b.count),
-          backgroundColor: buckets.map((_, i) => PALETTE[i % PALETTE.length]),
-          borderRadius: 8,
-        },
-      ],
-    };
-  }, [qualityMetrics]);
-
-  /* ======================= Datasets ======================= */
-  const lineDailyData = useMemo(
-    () => ({
-      labels: days,
-      datasets: [
-        {
-          label: "Llamadas por día",
-          data: days.map((d) => callsByDay[d] || 0),
-          fill: true,
-          backgroundColor: (ctx: any) => {
-            const { chart } = ctx;
-            const { ctx: c, chartArea } = chart;
-            if (!chartArea) return "rgba(63,81,181,0.08)";
-            const g = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-            g.addColorStop(0, "rgba(63,81,181,0.25)");
-            g.addColorStop(1, "rgba(63,81,181,0.03)");
-            return g;
-          },
-          borderColor: "#3f51b5",
-          borderWidth: 2,
-          tension: 0.35,
-          pointRadius: 2.5,
-        },
-      ],
-    }),
-    [days, callsByDay]
-  );
-
-  const barTopAgentsData = useMemo(
-    () => ({
-      labels: topAgents.map((a) => a.name),
-      datasets: [
-        {
-          label: "Llamadas",
-          data: topAgents.map((a) => a.llamadas),
-          backgroundColor: topAgents.map((_, i) => PALETTE[i % PALETTE.length]),
-          borderRadius: 8,
-          barThickness: 26,
-        },
-      ],
-    }),
-    [topAgents]
-  );
-
-  const barBestTmoData = useMemo(() => {
-    // mejor TMO entre agentes con >=2 llamadas (desde items)
-    const acc = new Map<string, { totalSec: number; count: number }>();
-    items.forEach((it) => {
-      const name = it.agent_name || it.empleado_nombre || "N/A";
-      let durSec: number | null =
-        typeof it.duration === "number" && !isNaN(it.duration) ? it.duration : null;
-      if (durSec == null) {
-        const s = it.starttime ? new Date(it.starttime).getTime() : NaN;
-        const e = it.endtime ? new Date(it.endtime).getTime() : NaN;
-        if (!isNaN(s) && !isNaN(e) && e >= s) durSec = (e - s) / 1000;
-      }
-      if (durSec != null) {
-        const row = acc.get(name) || { totalSec: 0, count: 0 };
-        row.totalSec += durSec;
-        row.count += 1;
-        acc.set(name, row);
-      }
-    });
-    const rows = Array.from(acc.entries())
-      .filter(([_, v]) => v.count >= 2)
-      .map(([name, v]) => ({
-        name,
-        tmoSec: v.totalSec / v.count,
-        tmoMin: secondsToMin1(v.totalSec / v.count),
-        tmoMMSS: secondsToMMSS(v.totalSec / v.count),
-      }))
-      .sort((a, b) => a.tmoSec - b.tmoSec)
-      .slice(0, 12);
-
-    return {
-      labels: rows.map((r) => r.name),
-      datasets: [
-        {
-          label: "TMO (mm:ss)",
-          data: rows.map((r) => r.tmoSec), // eje en segundos; ticks lo formatean
-          backgroundColor: rows.map((_, i) => PALETTE[(i + 6) % PALETTE.length]),
-          borderRadius: 8,
-          barThickness: 22,
-        },
-      ],
-    };
-  }, [items]);
-
-  const lineHourlyData = useMemo(
-    () => ({
-      labels: hoursLabels,
-      datasets: [
-        {
-          label: "Llamadas por hora (UTC)",
-          data: callsByHourUTC, // CONTEO ABSOLUTO
-          fill: false,
-          borderColor: "#2563eb",
-          backgroundColor: "#60a5fa",
-          borderWidth: 2.5,
-          tension: 0.25,
-          pointRadius: 2.5,
-        },
-      ],
-    }),
-    [hoursLabels, callsByHourUTC]
-  );
 
   /* ======================= Filtros y Guards ======================= */
   const Filters = (
@@ -458,19 +295,17 @@ const Dashboard: React.FC = () => {
       </div>
     );
   }
-  if (errorMe || !isAdmin) {
+  if (errorMe) {
     return (
       <div className="min-h-screen w-full bg-[#f6f7fb] px-6 2xl:px-10 py-6 flex items-center justify-center">
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-8 text-center max-w-lg">
-          <h2 className="text-xl font-extrabold text-slate-800">Acceso restringido</h2>
-          <p className="mt-2 text-slate-600">
-            Esta vista está disponible solo para cuentas <b>Admin</b>.
-          </p>
+          <h2 className="text-xl font-extrabold text-slate-800">No se pudo cargar tu sesión</h2>
+          <p className="mt-2 text-slate-600">Vuelve a iniciar sesión e inténtalo otra vez.</p>
           <button
             className="mt-5 px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700"
-            onClick={() => navigate("/dashboard")}
+            onClick={() => navigate("/login")}
           >
-            Ir al Dashboard
+            Ir a Login
           </button>
         </div>
       </div>
@@ -523,8 +358,17 @@ const Dashboard: React.FC = () => {
             </h1>
             <p className="text-slate-600 mt-1 text-sm">
               Rango <b>{start}</b> a <b>{end}</b> — Llamadas totales:{" "}
-              <b>{numberFormat(totalCalls)}</b>
+              <b>{numberFormat(items.length)}</b>
             </p>
+
+            {(metaUsuario || metaScopes) && (
+              <div className="mt-1 text-[12px] text-slate-500">
+                Usuario: <b>{metaUsuario || "—"}</b>{" "}
+                <span className="mx-2">·</span>
+                Ámbito:{" "}
+                <b>{Array.isArray(metaScopes) ? metaScopes.join(", ") : (metaScopes ?? "—")}</b>
+              </div>
+            )}
           </div>
         </div>
 
@@ -536,26 +380,49 @@ const Dashboard: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
             <div className="text-xs text-slate-500">Llamadas totales</div>
             <div className="text-2xl md:text-3xl font-bold text-indigo-600">
-              {numberFormat(totalCalls)}
+              {numberFormat(items.length)}
             </div>
           </div>
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
             <div className="text-xs text-slate-500">Agentes con actividad</div>
             <div className="text-2xl md:text-3xl font-bold text-indigo-600">
-              {numberFormat(uniqueAgents)}
+              {numberFormat(
+                new Set(
+                  items.map((i) =>
+                    String(i.agent_id ?? i.agent_name ?? i.empleado_nombre ?? "N/A")
+                  )
+                ).size
+              )}
             </div>
           </div>
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
             <div className="text-xs text-slate-500">TMO promedio</div>
             <div className="text-2xl md:text-3xl font-bold text-indigo-600">
-              {avgTmoMMSS}
+              {secondsToMMSS(
+                (() => {
+                  const secs: number[] = [];
+                  items.forEach((it) => {
+                    if (typeof it.duration === "number" && !isNaN(it.duration)) {
+                      secs.push(it.duration);
+                    } else {
+                      const s = it.starttime ? new Date(it.starttime).getTime() : NaN;
+                      const e = it.endtime ? new Date(it.endtime).getTime() : NaN;
+                      if (!isNaN(s) && !isNaN(e) && e >= s) secs.push((e - s) / 1000);
+                    }
+                  });
+                  if (!secs.length) return 0;
+                  return secs.reduce((a, b) => a + b, 0) / secs.length;
+                })()
+              )}
             </div>
             <div className="text-[11px] text-slate-500">mm:ss</div>
           </div>
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
             <div className="text-xs text-slate-500">Tasa de atención</div>
             <div className="text-2xl md:text-3xl font-bold text-indigo-600">
-              {answeredRatePct.toFixed(1)}%
+              {(
+                (kpiSummary?.tasa_atencion ?? qualityMetrics?.summary?.answer_rate ?? 0) * 100
+              ).toFixed(1)}%
             </div>
           </div>
         </div>
@@ -566,23 +433,36 @@ const Dashboard: React.FC = () => {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
             <div>
               <div className="text-xs text-slate-500">Únicos</div>
-              <div className="text-xl font-bold text-indigo-600">{numberFormat(uniqueCallers)}</div>
+              <div className="text-xl font-bold text-indigo-600">
+                {numberFormat(qualityMetrics?.callers?.unique_callers ?? 0)}
+              </div>
             </div>
             <div>
               <div className="text-xs text-slate-500">Reincidentes</div>
-              <div className="text-xl font-bold text-indigo-600">{numberFormat(repeatCallers)}</div>
+              <div className="text-xl font-bold text-indigo-600">
+                {numberFormat(qualityMetrics?.callers?.repeat_callers ?? 0)}
+              </div>
             </div>
             <div>
               <div className="text-xs text-slate-500">Tasa repetición</div>
-              <div className="text-xl font-bold text-indigo-600">{repeatRatePct.toFixed(1)}%</div>
+              <div className="text-xl font-bold text-indigo-600">
+                {((qualityMetrics?.callers?.repeat_rate ?? 0) * 100).toFixed(1)}%
+              </div>
             </div>
             <div>
               <div className="text-xs text-slate-500">Hold promedio</div>
-              <div className="text-xl font-bold text-indigo-600">{holdAvgMin.toFixed(1)} min</div>
+              <div className="text-xl font-bold text-indigo-600">
+                {secondsToMin1(
+                  kpiSummary?.hold_prom ?? qualityMetrics?.summary?.hold_avg ?? 0
+                ).toFixed(1)}{" "}
+                min
+              </div>
             </div>
             <div>
               <div className="text-xs text-slate-500">Tasa de hold</div>
-              <div className="text-xl font-bold text-indigo-600">{holdRatePct.toFixed(1)}%</div>
+              <div className="text-xl font-bold text-indigo-600">
+                {((kpiSummary?.hold_rate ?? qualityMetrics?.summary?.hold_rate ?? 0) * 100).toFixed(1)}%
+              </div>
             </div>
           </div>
         </div>
@@ -597,7 +477,20 @@ const Dashboard: React.FC = () => {
           </div>
           <div className="h-[320px]">
             <Bar
-              data={barTopAgentsData}
+              data={{
+                labels: (topAgents || []).map((a) => a.name),
+                datasets: [
+                  {
+                    label: "Llamadas",
+                    data: (topAgents || []).map((a) => a.llamadas),
+                    backgroundColor: (topAgents || []).map(
+                      (_: any, i: number) => PALETTE[i % PALETTE.length]
+                    ),
+                    borderRadius: 8,
+                    barThickness: 26,
+                  },
+                ],
+              }}
               options={{
                 indexAxis: "y",
                 responsive: true,
@@ -623,7 +516,29 @@ const Dashboard: React.FC = () => {
           </div>
           <div className="h-[320px]">
             <Line
-              data={lineDailyData}
+              data={{
+                labels: days,
+                datasets: [
+                  {
+                    label: "Llamadas por día",
+                    data: days.map((d) => callsByDay[d] || 0),
+                    fill: true,
+                    backgroundColor: (ctx: any) => {
+                      const { chart } = ctx;
+                      const { ctx: c, chartArea } = chart;
+                      if (!chartArea) return "rgba(63,81,181,0.08)";
+                      const g = c.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+                      g.addColorStop(0, "rgba(63,81,181,0.25)");
+                      g.addColorStop(1, "rgba(63,81,181,0.03)");
+                      return g;
+                    },
+                    borderColor: "#3f51b5",
+                    borderWidth: 2,
+                    tension: 0.35,
+                    pointRadius: 2.5,
+                  },
+                ],
+              }}
               options={{
                 responsive: true,
                 maintainAspectRatio: false,
@@ -645,7 +560,19 @@ const Dashboard: React.FC = () => {
           </div>
           <div className="h-[300px]">
             <Bar
-              data={qualityBucketsData}
+              data={{
+                labels: (qualityMetrics?.buckets || []).map((b: any) => b.label),
+                datasets: [
+                  {
+                    label: "Llamadas",
+                    data: (qualityMetrics?.buckets || []).map((b: any) => b.count),
+                    backgroundColor: (qualityMetrics?.buckets || []).map(
+                      (_: any, i: number) => PALETTE[i % PALETTE.length]
+                    ),
+                    borderRadius: 8,
+                  },
+                ],
+              }}
               options={{
                 responsive: true,
                 maintainAspectRatio: false,
@@ -667,7 +594,69 @@ const Dashboard: React.FC = () => {
           </div>
           <div className="h-[340px]">
             <Bar
-              data={barBestTmoData}
+              data={{
+                labels: (() => {
+                  const acc = new Map<string, { totalSec: number; count: number }>();
+                  items.forEach((it) => {
+                    const name = it.agent_name || it.empleado_nombre || "N/A";
+                    let durSec: number | null =
+                      typeof it.duration === "number" && !isNaN(it.duration) ? it.duration : null;
+                    if (durSec == null) {
+                      const s = it.starttime ? new Date(it.starttime).getTime() : NaN;
+                      const e = it.endtime ? new Date(it.endtime).getTime() : NaN;
+                      if (!isNaN(s) && !isNaN(e) && e >= s) durSec = (e - s) / 1000;
+                    }
+                    if (durSec != null) {
+                      const row = acc.get(name) || { totalSec: 0, count: 0 };
+                      row.totalSec += durSec;
+                      row.count += 1;
+                      acc.set(name, row);
+                    }
+                  });
+                  const rows = Array.from(acc.entries())
+                    .filter(([_, v]) => v.count >= 2)
+                    .map(([name, v]) => ({ name, tmoSec: v.totalSec / v.count }))
+                    .sort((a, b) => a.tmoSec - b.tmoSec)
+                    .slice(0, 12);
+                  return rows.map((r) => r.name);
+                })(),
+                datasets: [
+                  {
+                    label: "TMO (mm:ss)",
+                    data: (() => {
+                      const acc = new Map<string, { totalSec: number; count: number }>();
+                      items.forEach((it) => {
+                        const name = it.agent_name || it.empleado_nombre || "N/A";
+                        let durSec: number | null =
+                          typeof it.duration === "number" && !isNaN(it.duration) ? it.duration : null;
+                        if (durSec == null) {
+                          const s = it.starttime ? new Date(it.starttime).getTime() : NaN;
+                          const e = it.endtime ? new Date(it.endtime).getTime() : NaN;
+                          if (!isNaN(s) && !isNaN(e) && e >= s) durSec = (e - s) / 1000;
+                        }
+                        if (durSec != null) {
+                          const row = acc.get(name) || { totalSec: 0, count: 0 };
+                          row.totalSec += durSec;
+                          row.count += 1;
+                          acc.set(name, row);
+                        }
+                      });
+                      const rows = Array.from(acc.entries())
+                        .filter(([_, v]) => v.count >= 2)
+                        .map(([name, v]) => ({ name, tmoSec: v.totalSec / v.count }))
+                        .sort((a, b) => a.tmoSec - b.tmoSec)
+                        .slice(0, 12);
+                      return rows.map((r) => r.tmoSec);
+                    })(),
+                    backgroundColor: (() => {
+                      const n = 12;
+                      return Array.from({ length: n }, (_, i) => PALETTE[(i + 6) % PALETTE.length]);
+                    })(),
+                    borderRadius: 8,
+                    barThickness: 22,
+                  },
+                ],
+              }}
               options={{
                 indexAxis: "y",
                 responsive: true,
@@ -698,14 +687,28 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Actividad por hora (UTC) — FIX: conteo absoluto */}
+        {/* Actividad por hora (UTC) */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-[#1f2a56] font-semibold">Actividad por hora (UTC)</h3>
           </div>
           <div className="h-[260px]">
             <Line
-              data={lineHourlyData}
+              data={{
+                labels: hoursLabels,
+                datasets: [
+                  {
+                    label: "Llamadas por hora (UTC)",
+                    data: callsByHourUTC,
+                    fill: false,
+                    borderColor: "#2563eb",
+                    backgroundColor: "#60a5fa",
+                    borderWidth: 2.5,
+                    tension: 0.25,
+                    pointRadius: 2.5,
+                  },
+                ],
+              }}
               options={{
                 responsive: true,
                 maintainAspectRatio: false,
@@ -714,7 +717,7 @@ const Dashboard: React.FC = () => {
                   y: {
                     beginAtZero: true,
                     grid: { color: "#eef2ff" },
-                    ticks: { precision: 0 }, // valores enteros
+                    ticks: { precision: 0 },
                     title: { display: true, text: "Llamadas" },
                   },
                   x: { grid: { display: false } },

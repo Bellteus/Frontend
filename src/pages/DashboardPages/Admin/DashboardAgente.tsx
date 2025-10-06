@@ -37,30 +37,12 @@ ChartJS.register(
 const DEFAULT_START = "2025-08-01";
 const DEFAULT_END = "2025-08-07";
 
-/** Paleta (solo azules + 1 verde). Misma estética que DashboardPais. */
+/** Paleta (solo azules + 1 verde). */
 const PALETTE = [
-  "#0ea5e9", // sky 500
-  "#0284c7", // sky 600
-  "#38bdf8", // sky 400
-  "#3b82f6", // blue 500
-  "#2563eb", // blue 600
-  "#1d4ed8", // blue 700
-  "#60a5fa", // blue 400
-  "#93c5fd", // blue 300
-  "#bfdbfe", // blue 200
-  "#a5b4fc", // indigo 300 (azulado)
-  "#6366f1", // indigo 500 (azulado)
-  "#3f51b5", // indigo 600
-  "#2d5a9e", // steel/indigo
-  "#64748b", // slate 500 (azulado)
-  "#94a3b8", // slate 400 (azulado)
-  "#475569", // slate 600 (azulado)
-  "#1e3a8a", // blue 900
-  "#0b4f82", // deep blue
-  "#4f46e5", // indigo 600 (azulado)
-  "#7dd3fc", // sky 300
-  "#c7d2fe", // indigo 200
-  "#22c55e", // único verde (emerald 500)
+  "#0ea5e9","#0284c7","#38bdf8","#3b82f6","#2563eb","#1d4ed8",
+  "#60a5fa","#93c5fd","#bfdbfe","#a5b4fc","#6366f1","#3f51b5",
+  "#2d5a9e","#64748b","#94a3b8","#475569","#1e3a8a","#0b4f82",
+  "#4f46e5","#7dd3fc","#c7d2fe","#22c55e",
 ];
 
 const toISODate = (s: string) => (s ? s.slice(0, 10) : "");
@@ -104,8 +86,8 @@ const DashboardAgente: React.FC = () => {
 
   const [start, setStart] = useState(DEFAULT_START);
   const [end, setEnd] = useState(DEFAULT_END);
-  const [countryFilter, setCountryFilter] = useState<string>("");
-  const [onlyWithAnalysis, setOnlyWithAnalysis] = useState(false); // se usa en dependencias para refrescar
+  const [countryFilter, setCountryFilter] = useState<string>(""); // solo Admin
+  const [onlyWithAnalysis, setOnlyWithAnalysis] = useState(false); // fuerza refresh
   const [agentQuery, setAgentQuery] = useState("");
 
   const [items, setItems] = useState<CallRecord2[]>([]);
@@ -122,7 +104,8 @@ const DashboardAgente: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const pais = countryFilter || undefined;
+      // Solo Admin puede forzar 'pais'; para el resto, el backend aplica country_scope del JWT.
+      const pais = isAdmin ? (countryFilter || undefined) : undefined;
       const { records } = await CallsService.callsByDate(start, end, pais);
       setItems(Array.isArray(records) ? (records as CallRecord2[]) : []);
       setLoading(false);
@@ -135,7 +118,7 @@ const DashboardAgente: React.FC = () => {
     }
   }
 
-  // Lista de países para el SELECT (fija por rango, NO se reduce al filtrar)
+  // Lista de países para el SELECT (solo Admin)
   async function fetchCountriesList() {
     try {
       const rows = await CallsService.topCountries(start, end);
@@ -152,9 +135,9 @@ const DashboardAgente: React.FC = () => {
   }
 
   useEffect(() => {
-    if (!loadingMe && isAdmin) {
+    if (!loadingMe) {
       fetchCalls();
-      fetchCountriesList();
+      if (isAdmin) fetchCountriesList();
     }
   }, [start, end, countryFilter, onlyWithAnalysis, isAdmin, loadingMe]); // eslint-disable-line
 
@@ -357,9 +340,6 @@ const DashboardAgente: React.FC = () => {
   }, [pieAgents, colorByAgent]);
 
   // Línea: TopN (5/10)
-  const [lineTopState] = useState<5 | 10>(5); // para el selector
-  useEffect(() => setLineTopN(lineTopState), [lineTopState]); // sincroniza estado interno
-
   const lineAgents = useMemo(
     () => agentsSorted.slice(0, lineTopN),
     [agentsSorted, lineTopN]
@@ -414,7 +394,7 @@ const DashboardAgente: React.FC = () => {
   );
 
   /* ======================= KPIs ======================= */
-  const uniqueAgents = agentsSorted.length; // <-- ahora se usa en KPI
+  const uniqueAgents = agentsSorted.length;
   const avgSecAll = useMemo(() => {
     const secs: number[] = [];
     items.forEach((it) => {
@@ -454,20 +434,25 @@ const DashboardAgente: React.FC = () => {
           min={start}
         />
       </div>
-      <div className="flex flex-col">
-        <label className="text-xs font-semibold text-slate-600">País</label>
-        <select
-          value={countryFilter}
-          onChange={(e) => setCountryFilter(e.target.value)}
-          className="border border-slate-300 rounded-lg px-3 py-2 text-sm min-w-[180px]"
-        >
-          {countriesForSelect.map((p) => (
-            <option key={p || "all"} value={p}>
-              {p ? p : "Todos"}
-            </option>
-          ))}
-        </select>
-      </div>
+
+      {/* Select de País: SOLO visible para Admin */}
+      {isAdmin && (
+        <div className="flex flex-col">
+          <label className="text-xs font-semibold text-slate-600">País</label>
+          <select
+            value={countryFilter}
+            onChange={(e) => setCountryFilter(e.target.value)}
+            className="border border-slate-300 rounded-lg px-3 py-2 text-sm min-w-[180px]"
+          >
+            {countriesForSelect.map((p) => (
+              <option key={p || "all"} value={p}>
+                {p ? p : "Todos"}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="flex flex-col">
         <label className="text-xs font-semibold text-slate-600">Buscar agente</label>
         <input
@@ -520,19 +505,17 @@ const DashboardAgente: React.FC = () => {
       </div>
     );
   }
-  if (errorMe || !isAdmin) {
+  if (errorMe) {
     return (
       <div className="min-h-screen w-full bg-[#f6f7fb] px-6 2xl:px-10 py-6 flex items-center justify-center">
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-8 text-center max-w-lg">
-          <h2 className="text-xl font-extrabold text-slate-800">Acceso restringido</h2>
-          <p className="mt-2 text-slate-600">
-            Esta vista está disponible solo para cuentas <b>Admin</b>.
-          </p>
+          <h2 className="text-xl font-extrabold text-slate-800">No se pudo cargar tu sesión</h2>
+          <p className="mt-2 text-slate-600">Vuelve a iniciar sesión e inténtalo otra vez.</p>
           <button
             className="mt-5 px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700"
-            onClick={() => navigate("/dashboard")}
+            onClick={() => navigate("/login")}
           >
-            Ir al Dashboard
+            Ir a Login
           </button>
         </div>
       </div>
@@ -586,7 +569,7 @@ const DashboardAgente: React.FC = () => {
             <h1 className="text-[#1f2a56] text-[28px] font-extrabold tracking-tight">Rendimiento por Agente</h1>
             <p className="text-slate-600 mt-1 text-sm">
               Rango <b>{start}</b> a <b>{end}</b>
-              {countryFilter ? <> · País: <b>{countryFilter}</b></> : null} — Total llamadas:{" "}
+              {isAdmin && countryFilter ? <> · País: <b>{countryFilter}</b></> : null} — Total llamadas:{" "}
               <b>{numberFormat(items.length)}</b>
             </p>
           </div>
@@ -636,7 +619,7 @@ const DashboardAgente: React.FC = () => {
               <Bar
                 data={barCallsByAgentData}
                 options={{
-                  indexAxis: "y" as const,
+                  indexAxis: "y",
                   responsive: true,
                   maintainAspectRatio: false,
                   animation: { duration: 600 },
@@ -746,7 +729,7 @@ const DashboardAgente: React.FC = () => {
             <Bar
               data={barTMOData}
               options={{
-                indexAxis: "y" as const,
+                indexAxis: "y",
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: { duration: 600 },

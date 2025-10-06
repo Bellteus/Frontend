@@ -1,5 +1,6 @@
+// src/pages/Sidevbar.tsx
 import { NavLink, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   FiMenu,
   FiGrid,
@@ -14,7 +15,7 @@ import {
   FiGlobe,
   FiTrendingUp,
 } from "react-icons/fi";
-import { AuthService } from "../services/Service";
+import { AuthService, LogsService } from "../services/Service";
 import { useMe } from "../hook/useMe";
 
 type Props = {
@@ -22,21 +23,31 @@ type Props = {
   setCollapsed: (expanded: boolean) => void;
 };
 
-const SIDE_W_EXP = 240;      // w-60 (15rem)
-const SIDE_W_COLLAPSED = 56; // w-14 (3.5rem)
+const SIDE_W_EXP = 240;
+const SIDE_W_COLLAPSED = 56;
 
 const Sidevbar: React.FC<Props> = ({ collapsed, setCollapsed }) => {
   const [dashboardExpanded, setDashboardExpanded] = useState(false);
   const navigate = useNavigate();
-  const { isAdmin } = useMe();
+  const { isAdmin, me } = useMe();
 
-  // ——— Cerrado por defecto
+  // Admin por scope (country_scope === "*")
+  const canSeeAudit = useMemo(() => {
+    const scope = (me as any)?.country_scope;
+    if (Array.isArray(scope)) return scope.includes("*");
+    if (typeof scope === "string") {
+      // por si viene como string o csv
+      if (scope.trim() === "*") return true;
+      return scope.split(",").map(s => s.trim()).includes("*");
+    }
+    return false;
+  }, [me]);
+
   useEffect(() => {
     setCollapsed(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ——— Ajustar padding del layout para no solapar contenido
   useEffect(() => {
     const isDesktop = () => window.matchMedia("(min-width: 1024px)").matches;
     const applyPadding = () => {
@@ -53,17 +64,25 @@ const Sidevbar: React.FC<Props> = ({ collapsed, setCollapsed }) => {
   const handleCollapsed = () => setCollapsed(!collapsed);
 
   const handleLogout = async () => {
-    try { await AuthService.logout(); } catch {}
-    localStorage.removeItem("id");
-    localStorage.removeItem("email");
-    navigate("/login", { replace: true });
+    try {
+      const email = (localStorage.getItem("email") || "").trim();
+      await LogsService.audit(
+        email ? `${email} "cerro sesion"` : `Usuario "cerro sesion"`
+      );
+    } catch {
+      // noop
+    } finally {
+      try { await AuthService.logout(); } catch {}
+      localStorage.removeItem("id");
+      localStorage.removeItem("email");
+      navigate("/login", { replace: true });
+    }
   };
 
   const handleGoToAuditoria = () => navigate("/auditoria");
 
   return (
     <>
-      {/* Overlay mobile (pulsa para cerrar) */}
       {!collapsed && (
         <div
           className="fixed inset-0 bg-slate-900/30 z-30 lg:hidden"
@@ -77,17 +96,14 @@ const Sidevbar: React.FC<Props> = ({ collapsed, setCollapsed }) => {
         className={[
           "fixed inset-y-0 left-0 z-40 bg-slate-50 border-r border-slate-200",
           "transform transition-[width,transform] duration-300 ease-in-out",
-          // Mobile: panel deslizante (oculto cuando está colapsado)
           collapsed ? "-translate-x-full lg:translate-x-0" : "translate-x-0",
-          // Desktop: rail ↔ ancho completo
           collapsed ? "lg:w-14" : "lg:w-60",
-          // Mobile: ancho completo del panel
           "w-60 lg:w-auto",
           "h-screen flex flex-col overflow-hidden text-sm",
         ].join(" ")}
       >
         <nav className="flex flex-col flex-grow">
-          {/* Botón de colapsar / abrir */}
+          {/* Toggle */}
           <button
             onClick={handleCollapsed}
             className="flex items-center gap-2 p-3 hover:bg-slate-100 transition-colors"
@@ -214,20 +230,22 @@ const Sidevbar: React.FC<Props> = ({ collapsed, setCollapsed }) => {
             </span>
           </NavLink>
 
-          {/* Auditoría */}
-          <button
-            onClick={handleGoToAuditoria}
-            className="flex items-center gap-2 p-3 hover:bg-slate-100 transition-colors text-left w-full"
-          >
-            <FiShield size={20} className="min-w-[20px]" />
-            <span
-              className={`transition-all duration-300 ${
-                collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"
-              }`}
+          {/* Auditoría (solo si country_scope === "*") */}
+          {canSeeAudit && (
+            <button
+              onClick={handleGoToAuditoria}
+              className="flex items-center gap-2 p-3 hover:bg-slate-100 transition-colors text-left w-full"
             >
-              Auditoría
-            </span>
-          </button>
+              <FiShield size={20} className="min-w-[20px]" />
+              <span
+                className={`transition-all duration-300 ${
+                  collapsed ? "opacity-0 w-0" : "opacity-100 w-auto"
+                }`}
+              >
+                Auditoría
+              </span>
+            </button>
+          )}
 
           {/* Perfil */}
           <NavLink

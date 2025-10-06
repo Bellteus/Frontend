@@ -24,8 +24,9 @@ import {
   FiUsers,
   FiAlertTriangle,
   FiTarget,
-  FiUser, // NUEVO: para mostrar el usuario actual
+  FiUser,
 } from "react-icons/fi";
+import { useMe } from "../hook/useMe";
 
 /* ======================== Paleta coherente ======================== */
 const CLASSES = {
@@ -33,6 +34,29 @@ const CLASSES = {
   outline:
     "border border-slate-300 hover:border-slate-400 text-slate-700 bg-white",
 };
+
+/* ======================== Países y normalización ======================== */
+const COUNTRY_OPTIONS = ["Argentina", "Chile", "Perú", "Colombia"] as const;
+const CODE_TO_LABEL: Record<string, string> = {
+  AR: "Argentina",
+  CL: "Chile",
+  PE: "Perú",
+  CO: "Colombia",
+  MX: "México",
+};
+const LABEL_TO_CODE: Record<string, string> = Object.fromEntries(
+  Object.entries(CODE_TO_LABEL).map(([k, v]) => [v, k])
+);
+function normalizeCountryLabel(raw?: string | null): string {
+  if (!raw) return "";
+  const t = raw.trim();
+  // Si ya viene como label conocido
+  if (COUNTRY_OPTIONS.includes(t as any)) return t;
+  // Si viene como código tipo "PE"
+  if (CODE_TO_LABEL[t]) return CODE_TO_LABEL[t];
+  // Fallback: capitalizar primera letra
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
 
 /* ======================== Helpers ======================== */
 const pct = (v?: number | null) =>
@@ -50,7 +74,6 @@ const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const safeFrac = (v?: number | null) =>
   typeof v === "number" && isFinite(v) && v >= 0 ? Math.min(v, 1) : 0;
 
-/** Normaliza un diccionario 0..1 a % (para PDF principalmente). */
 function toPctMap(
   map?: Record<string, number | null> | null
 ): Record<string, string> | null {
@@ -71,26 +94,20 @@ function normalizeSentiment(dist?: SentimentDistribution | null) {
 }
 
 /* =================== Export PDF (País) =================== */
-// NUEVO: segundo parámetro opcional 'generatedByEmail'
 export function exportarPaisPDF(
   data: CountryPerformanceReport,
   generatedByEmail?: string
 ) {
   const doc = new jsPDF();
   const now = new Date().toLocaleString();
-
   doc.setFontSize(16);
   doc.text("Reporte de Análisis por País", 14, 15);
   doc.setFontSize(10);
   doc.text(`Fecha de generación: ${now}`, 14, 22);
-
-  // NUEVO: imprimo el email del generador
-  if (generatedByEmail) {
-    doc.text(`Generado por: ${generatedByEmail}`, 14, 27);
-  }
+  if (generatedByEmail) doc.text(`Generado por: ${generatedByEmail}`, 14, 27);
 
   autoTable(doc, {
-    startY: generatedByEmail ? 33 : 28, // NUEVO: bajo tabla si se imprimió el email
+    startY: generatedByEmail ? 33 : 28,
     head: [["Campo", "Valor"]],
     body: [
       ["País", data.pais],
@@ -109,7 +126,6 @@ export function exportarPaisPDF(
     ],
   });
 
-  // Distribuciones como % legibles
   const lastY0 =
     (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable
       ?.finalY ?? 80;
@@ -183,26 +199,20 @@ export function exportarPaisPDF(
 }
 
 /* ================== Export PDF (Agente) ================== */
-// NUEVO: segundo parámetro opcional 'generatedByEmail'
 export function exportarAgentePDF(
   data: AgentPerformanceReport,
   generatedByEmail?: string
 ) {
   const doc = new jsPDF();
   const now = new Date().toLocaleString();
-
   doc.setFontSize(16);
   doc.text("Reporte de Análisis de Agente", 14, 15);
   doc.setFontSize(10);
   doc.text(`Fecha de generación: ${now}`, 14, 22);
-
-  // NUEVO: imprimo el email del generador
-  if (generatedByEmail) {
-    doc.text(`Generado por: ${generatedByEmail}`, 14, 27);
-  }
+  if (generatedByEmail) doc.text(`Generado por: ${generatedByEmail}`, 14, 27);
 
   autoTable(doc, {
-    startY: generatedByEmail ? 33 : 28, // NUEVO: bajo tabla si se imprimió el email
+    startY: generatedByEmail ? 33 : 28,
     head: [["Campo", "Valor"]],
     body: [
       ["ID Empleado", String(data.id_empleado)],
@@ -274,11 +284,7 @@ type CardProps = {
   children?: React.ReactNode;
 };
 const Card = ({ title, right, className, children }: CardProps) => (
-  <div
-    className={`bg-white rounded-xl shadow border border-slate-200 ${
-      className || ""
-    }`}
-  >
+  <div className={`bg-white rounded-xl shadow border border-slate-200 ${className || ""}`}>
     {(title || right) && (
       <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
         <h3 className="font-semibold text-slate-900">{title}</h3>
@@ -297,14 +303,10 @@ const StatCard: React.FC<{
 }> = ({ icon, label, value, hint }) => (
   <div className="rounded-lg border border-slate-200 p-3 bg-slate-50">
     <div className="flex items-center gap-2 text-slate-700 mb-1">
-      <span className="p-1.5 rounded-md bg-indigo-50 text-indigo-700">
-        {icon}
-      </span>
+      <span className="p-1.5 rounded-md bg-indigo-50 text-indigo-700">{icon}</span>
       <span className="text-sm">{label}</span>
     </div>
-    <div className="text-2xl font-semibold text-slate-900 leading-tight">
-      {value}
-    </div>
+    <div className="text-2xl font-semibold text-slate-900 leading-tight">{value}</div>
     {hint && <div className="text-xs text-slate-500 mt-1">{hint}</div>}
   </div>
 );
@@ -333,10 +335,7 @@ const SegBar: React.FC<{
         {items.map((it, i) => {
           const w = total ? Math.round((it.value / total) * 1000) / 10 : 0;
           return (
-            <span
-              key={i}
-              className="text-xs px-2 py-1 rounded-full border border-slate-200 bg-white"
-            >
+            <span key={i} className="text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">
               {it.label}: {w}%
             </span>
           );
@@ -349,27 +348,42 @@ const SegBar: React.FC<{
 /* ================== Componente principal ================== */
 const PerformanceSelector = () => {
   const [modo, setModo] = useState<"pais" | "agente">("pais");
-  const [nombre, setNombre] = useState("");
-  const [paisReport, setPaisReport] =
-    useState<CountryPerformanceReport | null>(null);
-  const [agentReport, setAgentReport] =
-    useState<AgentPerformanceReport | null>(null);
+  const [nombre, setNombre] = useState(""); // para agente
+  const [paisReport, setPaisReport] = useState<CountryPerformanceReport | null>(null);
+  const [agentReport, setAgentReport] = useState<AgentPerformanceReport | null>(null);
   const [error, setError] = useState("");
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaFin, setFechaFin] = useState("");
   const [loading, setLoading] = useState(false);
   const [agentOptions, setAgentOptions] = useState<string[]>([]);
   const [agentsEnabled, setAgentsEnabled] = useState(false);
+  const [selectedPais, setSelectedPais] = useState<string>(""); // ⬅️ País vigente (bloqueado para no-admin)
 
   const navigate = useNavigate();
+  const { isAdmin, loadingMe, errorMe, me } = useMe();
 
-  // NUEVO: email del usuario actual para mostrar en UI y PDF
+  // Email del usuario para imprimir en PDF
   const currentEmail = useMemo(() => localStorage.getItem("email") || "", []);
 
-  // helper local para auditar sin repetir código
+  // Auditoría breve
   const audit = (action: string) => LogsService.audit(action);
 
-  // Habilitar y cargar agentes cuando haya fechas (consume API: calls-by-date) => LOG
+  // Definir país por defecto según country_scope
+  useEffect(() => {
+    if (loadingMe) return;
+    if (isAdmin) {
+      setSelectedPais(""); // Admin: "Todos" por defecto
+      return;
+    }
+    const scope: string[] = Array.isArray((me as any)?.country_scope)
+      ? (me as any).country_scope
+      : [];
+    const first = scope.find((s) => s !== "*");
+    const label = normalizeCountryLabel(first || "");
+    setSelectedPais(label);
+  }, [isAdmin, loadingMe, me]);
+
+  // Cargar agentes cuando haya fechas (y opcionalmente país seleccionado)
   useEffect(() => {
     setAgentOptions([]);
     setAgentsEnabled(false);
@@ -380,11 +394,32 @@ const PerformanceSelector = () => {
 
     async function loadAgents() {
       try {
-        audit(`Consultó agentes por rango (${fechaInicio} → ${fechaFin})`);
-        const res = await CallsService.callsByDate(fechaInicio, fechaFin);
+        audit(
+          `Consultó agentes por rango (${fechaInicio} → ${fechaFin})` +
+            (isAdmin && selectedPais ? ` en país=${selectedPais}` : "")
+        );
+        const paisForQuery =
+          isAdmin && selectedPais && LABEL_TO_CODE[selectedPais]
+            ? selectedPais
+            : !isAdmin && selectedPais
+            ? selectedPais
+            : undefined;
+
+        const res = await CallsService.callsByDate(
+          fechaInicio,
+          fechaFin,
+          paisForQuery
+        );
         const names = Array.from(
           new Set(
             (res.records || [])
+              .filter((r: any) => {
+                // seguridad adicional: si admin eligió un país, filtrar por pais en UI también
+                if (isAdmin && selectedPais) {
+                  return normalizeCountryLabel(r.pais) === selectedPais;
+                }
+                return true;
+              })
               .map((r: any) => r.agent_name || r.empleado_nombre)
               .filter(Boolean)
           )
@@ -393,14 +428,14 @@ const PerformanceSelector = () => {
         setAgentsEnabled(true);
       } catch {
         setAgentOptions([]);
-        setAgentsEnabled(true); // se permite input aunque falle
+        setAgentsEnabled(true);
       }
     }
     loadAgents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fechaInicio, fechaFin]);
+  }, [fechaInicio, fechaFin, selectedPais, isAdmin]);
 
-  // Ver historial (consume API del historial en la pantalla siguiente) => LOG
+  // Ver historial
   const logAndGoHistory = async () => {
     try {
       await audit(
@@ -413,17 +448,17 @@ const PerformanceSelector = () => {
     }
   };
 
-  // Exportar PDF (no es consumo de datos, pero mantenemos log)
+  // Exportar PDF
   const handleDescargarPDF = async () => {
     try {
       if (modo === "pais" && paisReport) {
         await audit(`Descargó análisis del país "${paisReport.pais}" en PDF`);
-        exportarPaisPDF(paisReport, currentEmail); // NUEVO: pasa email
+        exportarPaisPDF(paisReport, currentEmail);
       } else if (modo === "agente" && agentReport) {
         await audit(
           `Descargó análisis del agente "${agentReport.nombre_empleado}" en PDF`
         );
-        exportarAgentePDF(agentReport, currentEmail); // NUEVO: pasa email
+        exportarAgentePDF(agentReport, currentEmail);
       }
     } catch {
       if (modo === "pais" && paisReport) exportarPaisPDF(paisReport, currentEmail);
@@ -431,7 +466,7 @@ const PerformanceSelector = () => {
     }
   };
 
-  // Buscar (consume API de análisis) => LOG
+  // Buscar (análisis)
   const handleBuscar = async () => {
     setLoading(true);
     setError("");
@@ -444,17 +479,20 @@ const PerformanceSelector = () => {
       if (!fi || !ff) throw new Error("Seleccione fecha inicio y fin.");
 
       if (modo === "pais") {
-        if (!nombre) throw new Error("Seleccione o escriba un país.");
-        audit(`Buscó análisis por país "${nombre}" (${fi} → ${ff})`);
-        const data = await CountryPerformanceService.analyzeCountry(
-          nombre,
-          fi,
-          ff
-        );
+        // País: admin puede elegir; no-admin: bloqueado por scope
+        const pais = selectedPais;
+        if (!pais) throw new Error("Seleccione un país.");
+        audit(`Buscó análisis por país "${pais}" (${fi} → ${ff})`);
+        const data = await CountryPerformanceService.analyzeCountry(pais, fi, ff);
         setPaisReport(data);
       } else {
         if (!nombre) throw new Error("Seleccione un agente.");
-        audit(`Buscó análisis por agente "${nombre}" (${fi} → ${ff})`);
+        // Nota: el backend ya filtra por scope; para admin la selección de país
+        // controló la lista de agentes. El análisis por agente se hace por nombre.
+        audit(
+          `Buscó análisis por agente "${nombre}" (${fi} → ${ff})` +
+            (isAdmin && selectedPais ? ` en país=${selectedPais}` : "")
+        );
         const data = await PerformanceService.analyzeAgent(nombre, fi, ff);
         setAgentReport(data);
       }
@@ -465,43 +503,21 @@ const PerformanceSelector = () => {
     }
   };
 
-  /* ======= Barras apiladas memoizadas (valores crudos 0..1) ======= */
-  const sentSeg = useMemo(
-    () => [
-      {
-        label: "Positivo",
-        value: safeFrac(paisReport?.sentimiento_distribucion?.positivo),
-        className: "bg-green-500/70",
-      },
-      {
-        label: "Neutral",
-        value: safeFrac(paisReport?.sentimiento_distribucion?.neutral),
-        className: "bg-sky-500/70",
-      },
-      {
-        label: "Negativo",
-        value: safeFrac(paisReport?.sentimiento_distribucion?.negativo),
-        className: "bg-indigo-500/70",
-      },
-    ],
-    [paisReport]
-  );
-
-  const callSeg = useMemo(
-    () => [
-      {
-        label: "In",
-        value: safeFrac(paisReport?.calltype_distribucion?.In),
-        className: "bg-sky-500/70",
-      },
-      {
-        label: "Out",
-        value: safeFrac(paisReport?.calltype_distribucion?.Out),
-        className: "bg-indigo-500/70",
-      },
-    ],
-    [paisReport]
-  );
+  /* ================== Render ================== */
+  if (loadingMe) {
+    return (
+      <div className="w-full min-h-screen p-4">
+        <Card><div className="h-24 animate-pulse bg-slate-100 rounded-lg" /></Card>
+      </div>
+    );
+  }
+  if (errorMe) {
+    return (
+      <div className="w-full min-h-screen p-4">
+        <Card><div className="text-red-600">No se pudo cargar tu sesión. Vuelve a iniciar sesión.</div></Card>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full min-h-screen p-4 space-y-6">
@@ -511,17 +527,13 @@ const PerformanceSelector = () => {
         title="🔎 Seleccione qué desea analizar"
         right={
           <div className="flex gap-2 items-center">
-            {/* NUEVO: chip con email del usuario actual */}
             <span
               className="hidden md:inline-flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-200 text-slate-700 bg-white"
               title="Usuario actual"
             >
               <FiUser />
-              <span className="text-sm">
-                {currentEmail || "sin sesión"}
-              </span>
+              <span className="text-sm">{currentEmail || "sin sesión"}</span>
             </span>
-
             <button
               className="hidden md:inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white"
               onClick={logAndGoHistory}
@@ -568,8 +580,8 @@ const PerformanceSelector = () => {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+          <div className="md:col-span-2">
             <label className="block text-sm font-medium mb-1">Fecha inicio</label>
             <input
               type="date"
@@ -578,7 +590,7 @@ const PerformanceSelector = () => {
               onChange={(e) => setFechaInicio(e.target.value)}
             />
           </div>
-          <div>
+          <div className="md:col-span-2">
             <label className="block text-sm font-medium mb-1">Fecha fin</label>
             <input
               type="date"
@@ -588,27 +600,33 @@ const PerformanceSelector = () => {
             />
           </div>
 
-          <div className="col-span-2">
-            <label className="block text-sm font-medium mb-1">
-              {modo === "pais" ? "País" : "Agente"}
-            </label>
+          {/* País: admin editable; no-admin bloqueado */}
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium mb-1">País</label>
+            <select
+              value={selectedPais}
+              onChange={(e) => setSelectedPais(e.target.value)}
+              disabled={!isAdmin}
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 disabled:opacity-60"
+            >
+              {isAdmin && <option value="">Todos</option>}
+              {COUNTRY_OPTIONS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+              {!isAdmin && !selectedPais && (
+                <option value="" disabled>
+                  Detectando país…
+                </option>
+              )}
+            </select>
+          </div>
 
-            {modo === "pais" ? (
-              <select
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2"
-              >
-                <option value="">Seleccione…</option>
-                {["Argentina", "Chile", "Perú", "Colombia", "México"].map(
-                  (c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  )
-                )}
-              </select>
-            ) : (
+          {/* Selector de agente SOLO en modo agente */}
+          {modo === "agente" && (
+            <div className="md:col-span-4">
+              <label className="block text-sm font-medium mb-1">Agente</label>
               <select
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
@@ -616,9 +634,7 @@ const PerformanceSelector = () => {
                 disabled={!agentsEnabled}
               >
                 <option value="">
-                  {agentsEnabled
-                    ? "Seleccione un agente…"
-                    : "Seleccione fechas primero"}
+                  {agentsEnabled ? "Seleccione un agente…" : "Seleccione fechas primero"}
                 </option>
                 {agentOptions.map((a) => (
                   <option key={a} value={a}>
@@ -626,16 +642,18 @@ const PerformanceSelector = () => {
                   </option>
                 ))}
               </select>
-            )}
-          </div>
+            </div>
+          )}
 
-          <button
-            onClick={handleBuscar}
-            disabled={loading}
-            className={`px-4 py-2 rounded-lg ${CLASSES.primary} disabled:opacity-60`}
-          >
-            {loading ? "Buscando..." : "Buscar"}
-          </button>
+          <div className="md:col-span-2">
+            <button
+              onClick={handleBuscar}
+              disabled={loading}
+              className={`w-full px-4 py-2 rounded-lg ${CLASSES.primary} disabled:opacity-60`}
+            >
+              {loading ? "Buscando..." : "Buscar"}
+            </button>
+          </div>
         </div>
 
         {/* Acciones móviles */}
@@ -663,54 +681,31 @@ const PerformanceSelector = () => {
           title="📊 Resultado del análisis (País)"
           right={
             paisReport.periodo ? (
-              <span className="text-sm text-slate-500">
-                {paisReport.periodo}
-              </span>
+              <span className="text-sm text-slate-500">{paisReport.periodo}</span>
             ) : null
           }
         >
-          {/* KPIs */}
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            <StatCard
-              icon={<FiUsers />}
-              label="# Llamadas"
-              value={paisReport.numero_llamadas ?? "—"}
-            />
-            <StatCard
-              icon={<FiTrendingUp />}
-              label="Score prom."
-              value={n2(paisReport.performance_score_promedio)}
-            />
-            <StatCard
-              icon={<FiSmile />}
-              label="Satisfacción prom."
-              value={n2(paisReport.satisfaccion_cliente_promedio)}
-            />
-            <StatCard
-              icon={<FiTarget />}
-              label="Resueltos"
-              value={pct(paisReport.porcentaje_resueltos)}
-            />
-            <StatCard
-              icon={<FiClock />}
-              label="Duración prom."
-              value={secLegible(paisReport.duracion_promedio_seg)}
-            />
+            <StatCard icon={<FiUsers />} label="# Llamadas" value={paisReport.numero_llamadas ?? "—"} />
+            <StatCard icon={<FiTrendingUp />} label="Score prom." value={n2(paisReport.performance_score_promedio)} />
+            <StatCard icon={<FiSmile />} label="Satisfacción prom." value={n2(paisReport.satisfaccion_cliente_promedio)} />
+            <StatCard icon={<FiTarget />} label="Resueltos" value={pct(paisReport.porcentaje_resueltos)} />
+            <StatCard icon={<FiClock />} label="Duración prom." value={secLegible(paisReport.duracion_promedio_seg)} />
           </div>
 
-          {/* Distribuciones */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
             <div className="rounded-lg border border-slate-200 p-4">
               <div className="flex items-center gap-2 mb-2 text-slate-800 font-semibold">
                 <FiBarChart2 /> Distribución de sentimiento
               </div>
-              <SegBar items={sentSeg} />
+              <SegBar items={[
+                { label: "Positivo", value: safeFrac(paisReport?.sentimiento_distribucion?.positivo), className: "bg-green-500/70" },
+                { label: "Neutral", value: safeFrac(paisReport?.sentimiento_distribucion?.neutral), className: "bg-sky-500/70" },
+                { label: "Negativo", value: safeFrac(paisReport?.sentimiento_distribucion?.negativo), className: "bg-indigo-500/70" },
+              ]} />
               {paisReport.sentimiento_global && (
                 <div className="mt-2 text-sm text-slate-600">
-                  Sentimiento global:{" "}
-                  <span className="font-medium">
-                    {paisReport.sentimiento_global}
-                  </span>
+                  Sentimiento global: <span className="font-medium">{paisReport.sentimiento_global}</span>
                 </div>
               )}
             </div>
@@ -719,11 +714,13 @@ const PerformanceSelector = () => {
               <div className="flex items-center gap-2 mb-2 text-slate-800 font-semibold">
                 <FiBarChart2 /> Distribución de tipo de llamada
               </div>
-              <SegBar items={callSeg} />
+              <SegBar items={[
+                { label: "In", value: safeFrac(paisReport?.calltype_distribucion?.In), className: "bg-sky-500/70" },
+                { label: "Out", value: safeFrac(paisReport?.calltype_distribucion?.Out), className: "bg-indigo-500/70" },
+              ]} />
             </div>
           </div>
 
-          {/* Resumen + listas */}
           {paisReport.resumen_ejecutivo && (
             <div className="mt-6">
               <div className="flex items-center gap-2 text-slate-800 font-semibold mb-1">
@@ -737,25 +734,19 @@ const PerformanceSelector = () => {
             <div>
               <div className="font-semibold text-slate-800 mb-2">⭐ Fortalezas</div>
               <ul className="list-disc ml-5 space-y-1">
-                {paisReport.fortalezas_recurrentes?.map((f, i) => (
-                  <li key={i}>{f}</li>
-                ))}
+                {paisReport.fortalezas_recurrentes?.map((f, i) => <li key={i}>{f}</li>)}
               </ul>
             </div>
             <div>
               <div className="font-semibold text-slate-800 mb-2">🔧 Oportunidades</div>
               <ul className="list-disc ml-5 space-y-1">
-                {paisReport.oportunidades_mejora_recurrentes?.map((o, i) => (
-                  <li key={i}>{o}</li>
-                ))}
+                {paisReport.oportunidades_mejora_recurrentes?.map((o, i) => <li key={i}>{o}</li>)}
               </ul>
             </div>
             <div>
               <div className="font-semibold text-slate-800 mb-2">📣 Recomendaciones</div>
               <ul className="list-disc ml-5 space-y-1">
-                {paisReport.recomendaciones?.map((r, i) => (
-                  <li key={i}>{r}</li>
-                ))}
+                {paisReport.recomendaciones?.map((r, i) => <li key={i}>{r}</li>)}
               </ul>
             </div>
           </div>
@@ -764,9 +755,7 @@ const PerformanceSelector = () => {
             <div>
               <div className="font-semibold text-slate-800 mb-2">🏆 Agentes destacados</div>
               <ul className="list-disc ml-5 space-y-1">
-                {paisReport.agentes_destacados?.map((a, i) => (
-                  <li key={i}>{a}</li>
-                ))}
+                {paisReport.agentes_destacados?.map((a, i) => <li key={i}>{a}</li>)}
               </ul>
             </div>
             <div>
@@ -775,9 +764,7 @@ const PerformanceSelector = () => {
                 Agentes con bajo performance
               </div>
               <ul className="list-disc ml-5 space-y-1">
-                {paisReport.agentes_con_bajo_performance?.map((a, i) => (
-                  <li key={i}>{a}</li>
-                ))}
+                {paisReport.agentes_con_bajo_performance?.map((a, i) => <li key={i}>{a}</li>)}
               </ul>
             </div>
           </div>
@@ -788,49 +775,17 @@ const PerformanceSelector = () => {
       {!loading && modo === "agente" && agentReport && (
         <Card title="📈 Resultado del análisis (Agente)">
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            <StatCard
-              icon={<FiUsers />}
-              label="Nombre"
-              value={agentReport.nombre_empleado}
-            />
-            <StatCard
-              icon={<FiFileText />}
-              label="ID"
-              value={String(agentReport.id_empleado)}
-            />
-            <StatCard
-              icon={<FiUsers />}
-              label="# Llamadas"
-              value={agentReport.numero_llamadas ?? "—"}
-            />
-            <StatCard
-              icon={<FiTrendingUp />}
-              label="Score prom."
-              value={n2(agentReport.performance_score_promedio)}
-            />
-            <StatCard
-              icon={<FiSmile />}
-              label="Satisfacción prom."
-              value={n2(agentReport.satisfaccion_cliente_promedio)}
-            />
+            <StatCard icon={<FiUsers />} label="Nombre" value={agentReport.nombre_empleado} />
+            <StatCard icon={<FiFileText />} label="ID" value={String(agentReport.id_empleado)} />
+            <StatCard icon={<FiUsers />} label="# Llamadas" value={agentReport.numero_llamadas ?? "—"} />
+            <StatCard icon={<FiTrendingUp />} label="Score prom." value={n2(agentReport.performance_score_promedio)} />
+            <StatCard icon={<FiSmile />} label="Satisfacción prom." value={n2(agentReport.satisfaccion_cliente_promedio)} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-            <StatCard
-              icon={<FiTarget />}
-              label="Resueltos"
-              value={pct(agentReport.resolucion_pct)}
-            />
-            <StatCard
-              icon={<FiAlertTriangle />}
-              label="Escalados"
-              value={pct(agentReport.escalados_pct)}
-            />
-            <StatCard
-              icon={<FiFileText />}
-              label="Follow-up"
-              value={pct(agentReport.followup_pct)}
-            />
+            <StatCard icon={<FiTarget />} label="Resueltos" value={pct(agentReport.resolucion_pct)} />
+            <StatCard icon={<FiAlertTriangle />} label="Escalados" value={pct(agentReport.escalados_pct)} />
+            <StatCard icon={<FiFileText />} label="Follow-up" value={pct(agentReport.followup_pct)} />
           </div>
 
           {agentReport.resumen_ejecutivo && (
@@ -846,25 +801,19 @@ const PerformanceSelector = () => {
             <div>
               <div className="font-semibold text-slate-800 mb-2">⭐ Fortalezas</div>
               <ul className="list-disc ml-5 space-y-1">
-                {agentReport.fortalezas_recurrentes?.map((f, i) => (
-                  <li key={i}>{f}</li>
-                ))}
+                {agentReport.fortalezas_recurrentes?.map((f, i) => <li key={i}>{f}</li>)}
               </ul>
             </div>
             <div>
               <div className="font-semibold text-slate-800 mb-2">🔧 Oportunidades</div>
               <ul className="list-disc ml-5 space-y-1">
-                {agentReport.oportunidades_mejora_recurrentes?.map((o, i) => (
-                  <li key={i}>{o}</li>
-                ))}
+                {agentReport.oportunidades_mejora_recurrentes?.map((o, i) => <li key={i}>{o}</li>)}
               </ul>
             </div>
             <div>
               <div className="font-semibold text-slate-800 mb-2">📣 Recomendaciones</div>
               <ul className="list-disc ml-5 space-y-1">
-                {agentReport.recomendaciones?.map((r, i) => (
-                  <li key={i}>{r}</li>
-                ))}
+                {agentReport.recomendaciones?.map((r, i) => <li key={i}>{r}</li>)}
               </ul>
             </div>
           </div>

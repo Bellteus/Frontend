@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { JoinService } from "../services/Service";
+import { useMe } from "../hook/useMe";
 
 /* ======================= Paleta común ======================= */
 const PALETTE = [
@@ -14,6 +15,22 @@ const PALETTE = [
 /* ======================= Fechas por defecto (primera semana) ======================= */
 const DEFAULT_START = "2025-08-01";
 const DEFAULT_END = "2025-08-07";
+
+/* ======================= Helpers país / scope ======================= */
+const CODE_TO_LABEL: Record<string, string> = {
+  AR: "Argentina",
+  CL: "Chile",
+  PE: "Perú",
+  CO: "Colombia",
+  MX: "México",
+};
+const normalizeCountryLabel = (raw?: string | null) => {
+  if (!raw) return "";
+  const t = String(raw).trim();
+  if (!t) return "";
+  if (CODE_TO_LABEL[t]) return CODE_TO_LABEL[t];
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
 
 /* ======================= Tipos ======================= */
 export interface CallRecord2 {
@@ -105,12 +122,27 @@ const RowSkeleton: React.FC = () => (
 /* ======================= Componente ======================= */
 const CallsWithAnalysis: React.FC = () => {
   const navigate = useNavigate();
+  const { me, isAdmin: isAdminFromHook, loadingMe, errorMe } = useMe();
+
+  // === Scope de país ===
+  const hasStar = Array.isArray((me as any)?.country_scope)
+    ? (me as any).country_scope.includes("*")
+    : false;
+  const isAdmin = isAdminFromHook || hasStar;
+  const scopedCountry = useMemo(() => {
+    if (isAdmin) return ""; // ve todos
+    const scopeArr: string[] = Array.isArray((me as any)?.country_scope)
+      ? (me as any).country_scope
+      : [];
+    const first = scopeArr.find((s) => s && s !== "*") || "";
+    return normalizeCountryLabel(first);
+  }, [isAdmin, me]);
 
   // filtros
   const [start, setStart] = useState(DEFAULT_START);
   const [end, setEnd] = useState(DEFAULT_END);
   const [onlyWithAnalysis, setOnlyWithAnalysis] = useState<boolean>(true);
-  const [onlyGT5, setOnlyGT5] = useState<boolean>(true); // nuevo filtro
+  const [onlyGT5, setOnlyGT5] = useState<boolean>(true);
   const [query, setQuery] = useState<string>("");
 
   // paginación
@@ -136,9 +168,16 @@ const CallsWithAnalysis: React.FC = () => {
     abortRef.current = ctrl;
 
     try {
-      const res = await JoinService.listWithAnalysis(start, end, p, PAGE_SIZE, onlyWithAnalysis);
+      // ⚠️ No pasamos 'pais'; el backend debe respetar el JWT (country_scope).
+      const res = await JoinService.listWithAnalysis(
+        start,
+        end,
+        p,
+        PAGE_SIZE,
+        onlyWithAnalysis
+      );
 
-      // Normalizar respuesta (aceptar snake/camel)
+      // Normalizar respuesta (acepta snake/camel)
       const r: any = Array.isArray(res)
         ? { items: res, page: p, page_size: PAGE_SIZE }
         : res;
@@ -169,21 +208,31 @@ const CallsWithAnalysis: React.FC = () => {
     }
   }
 
+  // Espera a que la sesión cargue para pedir datos
   useEffect(() => {
-    setPage(1); // reset al cambiar filtros
+    if (!loadingMe && !errorMe) {
+      fetchPage(page);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, start, end, onlyWithAnalysis, loadingMe, errorMe]);
+
+  // reset página al cambiar filtros locales
+  useEffect(() => {
+    setPage(1);
   }, [start, end, onlyWithAnalysis, query, onlyGT5]);
 
-  useEffect(() => {
-    fetchPage(page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, start, end, onlyWithAnalysis]);
-
-  // búsqueda + filtro local en página
+  // búsqueda + filtro local en página + filtro country_scope
   const filtered = useMemo(() => {
     const q = safeLower(query);
     return items.filter((it) => {
+      // Enforce country_scope si NO admin
+      if (!isAdmin) {
+        const rowCountry = normalizeCountryLabel(it.cdr?.pais);
+        if (scopedCountry && rowCountry !== scopedCountry) return false;
+      }
       // filtro > 5s
       if (onlyGT5 && getDurSec(it.cdr) <= 5) return false;
+
       if (!q) return true;
       const c = it.cdr || {};
       return [
@@ -191,7 +240,7 @@ const CallsWithAnalysis: React.FC = () => {
         c.calltype, c.organization, c.pais, it.id
       ].some((v) => safeLower(v).includes(q));
     });
-  }, [items, query, onlyGT5]);
+  }, [items, query, onlyGT5, isAdmin, scopedCountry]);
 
   // paginador helpers
   const canPrev = page > 1;
@@ -203,6 +252,28 @@ const CallsWithAnalysis: React.FC = () => {
   const goLast = () => {
     if (totalPages != null) setPage(totalPages);
   };
+
+  /* ======================= Guards de sesión ======================= */
+  if (loadingMe) {
+    return (
+      <div className="min-h-screen bg-[#f6f7fb]">
+        <div className="w-full mx-auto max-w-[1700px] px-6 2xl:px-10 py-6">
+          <div className="h-24 bg-white border border-slate-200 rounded-2xl shadow-sm animate-pulse" />
+        </div>
+      </div>
+    );
+  }
+  if (errorMe) {
+    return (
+      <div className="min-h-screen bg-[#f6f7fb]">
+        <div className="w-full mx-auto max-w-[1700px] px-6 2xl:px-10 py-6">
+          <div className="p-4 rounded-2xl bg-red-50 text-red-700 border border-red-200">
+            No se pudo cargar la sesión. Intenta nuevamente.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   /* ======================= Render ======================= */
   return (
@@ -223,6 +294,11 @@ const CallsWithAnalysis: React.FC = () => {
               )}
               {totalItems != null && <> · Registros: <b>{totalItems}</b></>}
             </p>
+            {!isAdmin && scopedCountry && (
+              <div className="mt-1 text-[12px] text-slate-500">
+                País (scope): <b>{scopedCountry}</b>
+              </div>
+            )}
           </div>
           <button
             onClick={() => navigate("/dashboard")}
@@ -415,7 +491,7 @@ const CallsWithAnalysis: React.FC = () => {
 
                         <td className="px-4 py-[14px]">
                           <span className="text-slate-800">{row.cdr?.calltype || "—"}</span>
-                          <div className="text-xs text-slate-500">{row.cdr?.pais || "N/A"}</div>
+                          <div className="text-xs text-slate-500">{normalizeCountryLabel(row.cdr?.pais) || "N/A"}</div>
                         </td>
 
                         <td className="px-4 py-[14px]">

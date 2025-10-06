@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { FiRefreshCcw, FiClock, FiUser, FiFilter, FiList } from "react-icons/fi";
+import { useNavigate } from "react-router-dom";
 import { LogsService } from "../services/Service";
+import { useMe } from "../hook/useMe";
 
 /* ======================== Paleta coherente con Performance ======================== */
 const CLASSES = {
@@ -79,6 +81,17 @@ const normalizeLogs = (raw: any[]): ActionLog[] =>
     };
   });
 
+/* ====== Helper: validar scope admin ("*") ====== */
+function hasAdminScope(scope: unknown) {
+  if (Array.isArray(scope)) return scope.includes("*");
+  if (typeof scope === "string") {
+    const s = scope.trim();
+    if (s === "*") return true;
+    return s.split(",").map(v => v.trim()).includes("*");
+  }
+  return false;
+}
+
 /* ======================== Componente ======================== */
 const LogsTable = () => {
   const [logs, setLogs] = useState<ActionLog[]>([]);
@@ -93,6 +106,20 @@ const LogsTable = () => {
 
   // Email del usuario actual (almacenado por el login/jwt)
   const currentEmail = useMemo(() => localStorage.getItem("email") || "", []);
+  const navigate = useNavigate();
+
+  // Info de usuario + guard
+  const { me, loadingMe } = useMe();
+  const allowed = useMemo(() => hasAdminScope((me as any)?.country_scope), [me]);
+
+  // Log de intento de acceso denegado (no bloqueante)
+  useEffect(() => {
+    if (!loadingMe && !allowed) {
+      const email = (me as any)?.email || localStorage.getItem("email") || "";
+      const scopeTxt = JSON.stringify((me as any)?.country_scope ?? null);
+      LogsService.audit?.(`Acceso denegado a /auditoria — user=${email} scope=${scopeTxt}`).catch(() => {});
+    }
+  }, [loadingMe, allowed, me]);
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -116,10 +143,16 @@ const LogsTable = () => {
     }
   };
 
+  // Cargar logs solo si el usuario está autorizado
   useEffect(() => {
-    fetchLogs();
+    if (loadingMe) return;
+    if (allowed) {
+      fetchLogs();
+    } else {
+      setLoading(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [limit]);
+  }, [limit, allowed, loadingMe]);
 
   // Correos únicos
   const allEmails = useMemo(
@@ -162,6 +195,38 @@ const LogsTable = () => {
     };
   }, [filteredLogs]);
 
+  /* ======= Guards de render ======= */
+  if (loadingMe) {
+    return (
+      <div className="min-h-screen p-6 grid place-items-center">
+        <div className="flex flex-col items-center">
+          <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="mt-2 text-indigo-700 font-semibold">Cargando…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!allowed) {
+    return (
+      <div className="min-h-screen w-full bg-[#f6f7fb] px-6 2xl:px-10 py-6 flex items-center justify-center">
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-8 text-center max-w-lg">
+          <h2 className="text-xl font-extrabold text-slate-800">Acceso restringido</h2>
+          <p className="mt-2 text-slate-600">
+            Esta vista está disponible solo para cuentas administradoras.
+          </p>
+          <button
+            className="mt-5 px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700"
+            onClick={() => navigate("/dashboard")}
+          >
+            Ir al Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ======= Render autorizado ======= */
   return (
     <div className="min-h-screen p-4 space-y-4">
       {/* Header / filtros card */}

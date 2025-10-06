@@ -1,3 +1,4 @@
+// src/pages/HistorialAgentePerformance.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import jsPDF from "jspdf";
@@ -12,6 +13,7 @@ import {
   FiUsers,
   FiTrendingUp,
 } from "react-icons/fi";
+import { useMe } from "../hook/useMe";
 
 /* ======================== Paleta coherente ======================== */
 const CLASSES = {
@@ -24,15 +26,30 @@ const CLASSES = {
   chipNeg: "border-rose-300 bg-rose-50 text-rose-800",
 };
 
+/* ===== Country helpers ===== */
+const CODE_TO_LABEL: Record<string, string> = {
+  AR: "Argentina",
+  CL: "Chile",
+  PE: "Perú",
+  CO: "Colombia",
+  MX: "México",
+};
+const normalizeCountryLabel = (raw?: string | null) => {
+  if (!raw) return "";
+  const t = String(raw).trim();
+  if (CODE_TO_LABEL[t]) return CODE_TO_LABEL[t];
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
+
 type AgentReportStored = AgentPerformanceReport & {
   _id?: string;
-  fecha_inicio?: string; // ISO
-  fecha_fin?: string; // ISO
-  created_at?: string; // ISO
-  // compat con versiones anteriores
+  fecha_inicio?: string;
+  fecha_fin?: string;
+  created_at?: string;
   DateTime_realizado?: string;
   fecha_inicio_busqueda?: string;
   fecha_fin_busqueda?: string;
+  pais?: string; // para filtrar por país
 };
 
 /* ======================== Helpers ======================== */
@@ -40,8 +57,7 @@ const pct = (v?: number | null) =>
   typeof v === "number" && isFinite(v) ? `${(v * 100).toFixed(1)}%` : "—";
 const n2 = (v?: number | null) =>
   typeof v === "number" && isFinite(v) ? v.toFixed(2) : "—";
-const fmtDate = (iso?: string) =>
-  iso ? new Date(iso).toLocaleString() : "—";
+const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleString() : "—");
 const fmtDateShort = (iso?: string) =>
   iso ? new Date(iso).toLocaleDateString() : "—";
 const getRangeStart = (r: AgentReportStored) =>
@@ -142,18 +158,38 @@ const HistorialAgentePerformance = () => {
 
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaFin, setFechaFin] = useState("");
+
+  // filtros UI
   const [agenteFiltro, setAgenteFiltro] = useState("");
+  const [countryFilter, setCountryFilter] = useState<string>(""); // bloqueado si no-admin
 
   const navigate = useNavigate();
+  const { isAdmin, loadingMe, errorMe, me } = useMe();
 
-  // Obtener todos los reportes
+  // País del scope (si no-admin)
+  const scopedCountryLabel = useMemo(() => {
+    if (isAdmin) return "";
+    const scope = Array.isArray((me as any)?.country_scope)
+      ? (me as any).country_scope
+      : [];
+    const first = scope.find((s:any) => s !== "*");
+    return normalizeCountryLabel(first || "");
+  }, [isAdmin, me]);
+
+  // Seteo inicial del país filtrado
+  useEffect(() => {
+    if (!isAdmin) {
+      setCountryFilter(scopedCountryLabel);
+    }
+  }, [isAdmin, scopedCountryLabel]);
+
+  // Traer reportes (el backend ya debería respetar el JWT; aquí reforzamos)
   const fetchReports = async () => {
     setLoading(true);
     try {
-      // Nota: el endpoint /performance/list acepta agente opcional.
       const data = await PerformanceService.listReports();
       setReports(Array.isArray(data) ? data : []);
-    } catch (e) {
+    } catch {
       setReports([]);
     } finally {
       setLoading(false);
@@ -164,18 +200,47 @@ const HistorialAgentePerformance = () => {
     fetchReports();
   }, []);
 
-  // Opciones de agente únicas
+  // Lista de países presentes en los reportes (normalizados)
+  const countriesInReports = useMemo(() => {
+    const set = new Set<string>();
+    (reports || []).forEach((r) => {
+      const lbl = normalizeCountryLabel((r as any).pais);
+      if (lbl) set.add(lbl);
+    });
+    return Array.from(set.values()).sort((a, b) => a.localeCompare(b, "es"));
+  }, [reports]);
+
+  // Recorte por país según selección (admin) o scope (no-admin)
+  const reportsByCountry = useMemo(() => {
+    // si no hay campo pais, confiamos en que backend ya filtró; retornamos tal cual
+    const hasPais = (r: AgentReportStored) => Boolean((r as any).pais);
+    if (!isAdmin) {
+      if (!scopedCountryLabel) return reports; // fallback
+      if (!reports.some(hasPais)) return reports;
+      return reports.filter(
+        (r) => normalizeCountryLabel((r as any).pais) === scopedCountryLabel
+      );
+    }
+    // admin
+    if (!countryFilter) return reports;
+    if (!reports.some(hasPais)) return reports; // si no hay pais en data
+    return reports.filter(
+      (r) => normalizeCountryLabel((r as any).pais) === countryFilter
+    );
+  }, [reports, isAdmin, countryFilter, scopedCountryLabel]);
+
+  // Opciones de agente únicas (ya recortadas por país)
   const agentesUnicos = useMemo(() => {
     return Array.from(
-      new Set((reports || []).map((r) => r.nombre_empleado || "—"))
+      new Set((reportsByCountry || []).map((r) => r.nombre_empleado || "—"))
     )
       .filter((x) => x && x !== "—")
       .sort((a, b) => a.localeCompare(b, "es"));
-  }, [reports]);
+  }, [reportsByCountry]);
 
-  // Filtrado en frontend
+  // Filtrado final por agente + fechas
   const filtered = useMemo(() => {
-    const list = reports.filter((r) => {
+    const list = reportsByCountry.filter((r) => {
       const nameOk = agenteFiltro ? r.nombre_empleado === agenteFiltro : true;
       const refDate =
         getRangeStart(r) || r.created_at || r.DateTime_realizado || "";
@@ -185,51 +250,67 @@ const HistorialAgentePerformance = () => {
       return nameOk && okDate;
     });
 
-    // Orden por creado desc
     return list.sort((a, b) => {
       const ad = new Date(a.created_at || getRangeStart(a) || 0).getTime();
       const bd = new Date(b.created_at || getRangeStart(b) || 0).getTime();
       return bd - ad;
     });
-  }, [reports, agenteFiltro, fechaInicio, fechaFin]);
+  }, [reportsByCountry, agenteFiltro, fechaInicio, fechaFin]);
 
-  // Buscar (para UX de spinner)
-  const handleBuscar = () => {
+  // Buscar (aplicar filtros) => LOG
+  const handleBuscar = async () => {
     setSearching(true);
-    setTimeout(() => setSearching(false), 350);
+    try {
+      const agente = agenteFiltro || "Todos";
+      const desde = fechaInicio || "—";
+      const hasta = fechaFin || "—";
+      await LogsService.audit(
+        `Historial agentes — filtros { agente="${agente}", desde=${desde}, hasta=${hasta}, pais=${isAdmin ? (countryFilter || "Todos") : scopedCountryLabel} }`
+      );
+    } catch {
+    } finally {
+      setTimeout(() => setSearching(false), 350);
+    }
   };
 
-  // Descargar PDF + log
+  // Descargar PDF => LOG
   const handlePDF = async (r: AgentReportStored) => {
-    exportarAgentePDF(r);
-    const user_id = localStorage.getItem("id");
-    const user_email = localStorage.getItem("email");
-    if (user_id && user_email) {
-      try {
-        await LogsService.postSupervisorLog({
-          user_id,
-          user_email,
-          action: `Descargó reporte PDF de agente "${r.nombre_empleado}"`,
-        });
-      } catch {}
-    }
+    try {
+      exportarAgentePDF(r);
+      await LogsService.audit(
+        `Descargó reporte PDF de agente "${r.nombre_empleado}"${
+          (r as any).pais ? ` (pais=${normalizeCountryLabel((r as any).pais)})` : ""
+        }`
+      );
+    } catch {}
   };
 
-  // Regresar + log
   const handleBack = async () => {
-    const user_id = localStorage.getItem("id");
-    const user_email = localStorage.getItem("email");
-    if (user_id && user_email) {
-      try {
-        await LogsService.postSupervisorLog({
-          user_id,
-          user_email,
-          action: "Regresó desde historial de reportes por agente",
-        });
-      } catch {}
-    }
+    try {
+      await LogsService.audit("Regresó desde historial de reportes por agente");
+    } catch {}
     navigate(-1);
   };
+
+  /* ===== Guards de sesión ===== */
+  if (loadingMe) {
+    return (
+      <div className="min-h-screen p-4">
+        <div className="bg-white rounded-xl shadow border border-slate-200 p-4">
+          <div className="h-20 bg-slate-100 animate-pulse rounded-lg" />
+        </div>
+      </div>
+    );
+  }
+  if (errorMe) {
+    return (
+      <div className="min-h-screen p-4">
+        <div className="bg-white rounded-xl shadow border border-slate-200 p-4 text-red-600">
+          No se pudo cargar tu sesión. Vuelve a iniciar sesión.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-4 space-y-4">
@@ -245,12 +326,46 @@ const HistorialAgentePerformance = () => {
           <h1 className="text-xl font-bold text-slate-900 flex-1 text-center">
             Historial de reportes generados por agente
           </h1>
-          <div className="w-[110px]" />
+          {/* Chip país activo (solo informativo en no-admin) */}
+          {!isAdmin && scopedCountryLabel && (
+            <span className="inline-flex items-center gap-2 px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-700">
+              País: <b>{scopedCountryLabel}</b>
+            </span>
+          )}
+          {isAdmin && <div className="w-[110px]" />}
         </div>
 
         {/* Filtros */}
         <div className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+            {/* País */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-1">País</label>
+              {isAdmin ? (
+                <select
+                  value={countryFilter}
+                  onChange={(e) => setCountryFilter(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2"
+                >
+                  <option value="">Todos</option>
+                  {countriesInReports.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <select
+                  value={scopedCountryLabel}
+                  disabled
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 bg-slate-50 text-slate-700"
+                >
+                  <option value={scopedCountryLabel}>{scopedCountryLabel || "—"}</option>
+                </select>
+              )}
+            </div>
+
+            {/* Agente */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium mb-1">Agente</label>
               <select
@@ -267,6 +382,7 @@ const HistorialAgentePerformance = () => {
               </select>
             </div>
 
+            {/* Fechas */}
             <div>
               <label className="block text-sm font-medium mb-1">Desde</label>
               <input
@@ -276,7 +392,6 @@ const HistorialAgentePerformance = () => {
                 className="w-full border border-slate-300 rounded-lg px-3 py-2"
               />
             </div>
-
             <div>
               <label className="block text-sm font-medium mb-1">Hasta</label>
               <input
@@ -287,10 +402,10 @@ const HistorialAgentePerformance = () => {
               />
             </div>
 
-            <div className="flex items-end">
+            <div className="md:col-span-6 flex items-end">
               <button
                 onClick={handleBuscar}
-                className={`w-full px-4 py-2 rounded-lg ${CLASSES.primary}`}
+                className={`w-full md:w-auto px-4 py-2 rounded-lg ${CLASSES.primary}`}
                 disabled={searching}
               >
                 {searching ? "Buscando…" : "Aplicar"}
@@ -305,9 +420,7 @@ const HistorialAgentePerformance = () => {
         {(loading || searching) && (
           <div className="flex flex-col items-center justify-center h-48">
             <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-            <span className="mt-3 text-indigo-700 font-semibold">
-              Cargando…
-            </span>
+            <span className="mt-3 text-indigo-700 font-semibold">Cargando…</span>
           </div>
         )}
 
@@ -359,37 +472,21 @@ const HistorialAgentePerformance = () => {
                           {r.nombre_empleado || "—"}
                         </div>
                       </td>
-                      <td className="px-4 py-2 text-center">
-                        {r.id_empleado ?? "—"}
-                      </td>
-                      <td className="px-4 py-2 text-center">
-                        {r.numero_llamadas ?? "—"}
-                      </td>
-                      <td className="px-4 py-2 text-center">
-                        {n2(r.performance_score_promedio)}
-                      </td>
-                      <td className="px-4 py-2 text-center">
-                        {n2(r.satisfaccion_cliente_promedio)}
-                      </td>
+                      <td className="px-4 py-2 text-center">{r.id_empleado ?? "—"}</td>
+                      <td className="px-4 py-2 text-center">{r.numero_llamadas ?? "—"}</td>
+                      <td className="px-4 py-2 text-center">{n2(r.performance_score_promedio)}</td>
+                      <td className="px-4 py-2 text-center">{n2(r.satisfaccion_cliente_promedio)}</td>
                       <td className="px-4 py-2 text-center">
                         {sentimentChip(r.sentimiento_predominante ?? undefined)}
                       </td>
-                      <td className="px-4 py-2 text-center">
-                        {pct(r.resolucion_pct)}
-                      </td>
+                      <td className="px-4 py-2 text-center">{pct(r.resolucion_pct)}</td>
                       <td className="px-4 py-2 text-center">
                         <div className="flex flex-col">
-                          <span className="text-slate-800">
-                            {fmtDateShort(desde)}
-                          </span>
-                          <span className="text-slate-500 text-xs">
-                            {fmtDateShort(hasta)}
-                          </span>
+                          <span className="text-slate-800">{fmtDateShort(desde)}</span>
+                          <span className="text-slate-500 text-xs">{fmtDateShort(hasta)}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-2 text-center">
-                        {fmtDate(creado)}
-                      </td>
+                      <td className="px-4 py-2 text-center">{fmtDate(creado)}</td>
                       <td className="px-4 py-2 text-center">
                         <button
                           onClick={() => handlePDF(r)}

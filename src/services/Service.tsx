@@ -7,7 +7,7 @@ import { ActionLog, ActionLogCreate } from "../types/Logs";
 /* ===============================================================
    AXIOS + JWT por HEADER
    =============================================================== */
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/";
+const API_BASE = import.meta.env.VITE_API_URL || "https://bellteus.cbon.site";
 
 //https://bellteus.cbon.site
 
@@ -24,7 +24,7 @@ const USER_EMAIL_KEY = "email";
 
 /* ---------- Helpers JWT ---------- */
 interface JWTPayload {
-  sub?: string; // a veces es el email o el id
+  sub?: string; // puede ser email o id
   email?: string;
   username?: string;
   user_id?: string | number;
@@ -55,13 +55,13 @@ function persistUserFromToken(token: string) {
   const payload = parseJwt(token);
   if (!payload) return;
 
-  // email: intenta por 'email', 'username' o 'sub' si parece email
+  // email: 'email', 'username' o 'sub' si parece email
   const email =
     (payload.email as string) ??
     (payload.username as string) ??
     (typeof payload.sub === "string" && payload.sub.includes("@") ? payload.sub : undefined);
 
-  // id: intenta 'user_id', 'id' o 'sub' si no es email
+  // id: 'user_id', 'id' o 'sub' si no es email
   const userIdRaw =
     payload.user_id ??
     payload.id ??
@@ -487,19 +487,40 @@ export const LogsService = {
 
   /**
    * Nuevo helper usado por PerformanceSelector:
-   * Construye el payload con user_id y user_email desde localStorage
-   * y publica el log. No lanza error para no romper la UI.
+   * Construye el payload con user_id y user_email desde localStorage.
+   * Si faltan, hace fallback a leerlos del JWT al vuelo y los persiste.
+   * No lanza error para no romper la UI.
    */
   audit: async (
     action: string,
     extras?: Partial<Pick<ActionLogCreate, "timestamp">>
   ): Promise<void> => {
     try {
-      const user_id = localStorage.getItem(USER_ID_KEY) ?? "";
-      const user_email = localStorage.getItem(USER_EMAIL_KEY) ?? "";
+      let user_id = localStorage.getItem(USER_ID_KEY) ?? "";
+      let user_email = localStorage.getItem(USER_EMAIL_KEY) ?? "";
+
+      // 🔒 Fallback: si no hay en localStorage, intenta leer del JWT
+      if ((!user_id || !user_email) && getToken()) {
+        const payload = parseJwt(getToken()!);
+        if (!user_email) {
+          user_email =
+            String(payload?.email ?? payload?.username ?? "") ||
+            (typeof payload?.sub === "string" && payload.sub.includes("@") ? payload.sub : "");
+        }
+        if (!user_id) {
+          user_id = String(
+            payload?.user_id ??
+              payload?.id ??
+              (typeof payload?.sub === "string" && !payload.sub.includes("@") ? payload.sub : "")
+          );
+        }
+        if (user_email) localStorage.setItem(USER_EMAIL_KEY, user_email);
+        if (user_id) localStorage.setItem(USER_ID_KEY, user_id);
+      }
+
       await LogsService.create({
-        user_id,
-        user_email,
+        user_id: user_id ?? "",
+        user_email: user_email ?? "",
         action,
         ...(extras || {}),
       });

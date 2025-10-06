@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AuthService } from "../services/Service";
+import { AuthService, LogsService } from "../services/Service"; // ⬅️ Importa LogsService
+
 type Credentials = { email: string; password: string };
 
 const Login: React.FC = () => {
@@ -21,8 +22,30 @@ const Login: React.FC = () => {
     setError(null);
     setLoading(true);
     try {
-      await AuthService.login(credentials.email, credentials.password); // guarda token
-      await AuthService.me(); // valida token
+      // 1) Login (guarda el token internamente)
+      await AuthService.login(credentials.email, credentials.password);
+
+      // 2) Validar token y, si es posible, obtener id del usuario
+      const me = await AuthService.me();
+
+      // 3) Guardar el email introducido (éxito garantizado)
+      const emailTrim = credentials.email.trim();
+      if (emailTrim) localStorage.setItem("email", emailTrim);
+
+      // 4) (Opcional) si /auth/me trae id, lo persistimos también
+      if ((me as any)?.id != null) {
+        localStorage.setItem("id", String((me as any).id));
+      }
+
+      // 5) Registrar log: {user_email} "inicio sesion"
+      try {
+        await LogsService.audit(`${emailTrim} inicio sesion`);
+      } catch {
+        // No bloquear la navegación si el log falla
+        // (el backend recomendado también inyecta el email desde el token)
+      }
+
+      // 6) Redirigir
       navigate("/dashboard", { replace: true });
     } catch (err: any) {
       const status = err?.status as number | undefined;
