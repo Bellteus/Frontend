@@ -23,8 +23,8 @@ type Props = {
   setCollapsed: (expanded: boolean) => void;
 };
 
-const SIDE_W_EXP = 240;
-const SIDE_W_COLLAPSED = 56;
+const SIDE_W_EXP = 0;
+const SIDE_W_COLLAPSED = 0;
 
 const Sidevbar: React.FC<Props> = ({ collapsed, setCollapsed }) => {
   const [dashboardExpanded, setDashboardExpanded] = useState(false);
@@ -97,7 +97,7 @@ const Sidevbar: React.FC<Props> = ({ collapsed, setCollapsed }) => {
           "fixed inset-y-0 left-0 z-40 bg-slate-50 border-r border-slate-200",
           "transform transition-[width,transform] duration-300 ease-in-out",
           collapsed ? "-translate-x-full lg:translate-x-0" : "translate-x-0",
-          collapsed ? "lg:w-14" : "lg:w-60",
+          collapsed ? "lg:w-14" : "lg:w-56",
           "w-60 lg:w-auto",
           "h-screen flex flex-col overflow-hidden text-sm",
         ].join(" ")}
