@@ -89,6 +89,79 @@ const getAgentKey = (row: any): string =>
       "N/A"
   );
 
+/* ======================= Auxiliares UI ======================= */
+const KpiCard: React.FC<{ label: string; value: React.ReactNode; hint?: string }> = ({ label, value, hint }) => (
+  <div className="bg-white rounded-xl border border-slate-200 p-[clamp(10px,1vw,14px)] shadow-sm h-[clamp(70px,9vh,110px)]">
+    <div className="text-slate-500 text-[clamp(11px,0.85vw,12px)]">{label}</div>
+    <div className="text-indigo-600 font-bold leading-tight text-[clamp(20px,2vw,28px)]">{value}</div>
+    {hint && <div className="text-[clamp(10px,0.75vw,11px)] text-slate-500 -mt-0.5">{hint}</div>}
+  </div>
+);
+
+const Panel: React.FC<
+  React.PropsWithChildren<{ title: string; hint?: string | false; className?: string; extra?: React.ReactNode }>
+> = ({ title, hint, extra, className, children }) => (
+  <div className={`bg-white rounded-xl border border-slate-200 p-[clamp(10px,1vw,14px)] shadow-sm min-h-0 min-w-0 flex flex-col ${className || ""}`}>
+    <div className="flex items-center justify-between gap-3">
+      <h3 className="text-[#1f2a56] font-semibold text-[clamp(12px,1vw,14px)]">{title}</h3>
+      <div className="flex items-center gap-3">
+        {hint ? <span className="text-slate-500 text-[clamp(10px,0.8vw,12px)]">{hint}</span> : null}
+        {extra ?? null}
+      </div>
+    </div>
+    <div className="flex-1 min-h-0 mt-[clamp(6px,0.7vh,10px)]">{children}</div>
+  </div>
+);
+
+/* ====== Skeletons que calzan 1:1 con el layout real ====== */
+const SkBar = ({ w = "w-40", h = "h-4" }) => <div className={`bg-slate-200 rounded ${w} ${h}`} />;
+
+const SkKpiRow = () => (
+  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-[clamp(8px,1vw,14px)]">
+    {Array.from({ length: 4 }).map((_, i) => (
+      <div key={i} className="bg-white rounded-xl border border-slate-200 p-[clamp(10px,1vw,14px)] shadow-sm h-[clamp(70px,9vh,110px)] animate-pulse">
+        <SkBar w="w-24" h="h-3" />
+        <div className="mt-2"><SkBar w="w-16" h="h-7" /></div>
+        <div className="mt-2"><SkBar w="w-28" h="h-3" /></div>
+      </div>
+    ))}
+  </div>
+);
+
+const SkPanelChart: React.FC<{ h: number; className?: string }> = ({ h, className }) => (
+  <div className={`bg-white rounded-xl border border-slate-200 p-[clamp(10px,1vw,14px)] shadow-sm animate-pulse ${className || ""}`}>
+    <SkBar w="w-48" h="h-4" />
+    <div className="h-[1px] w-full bg-slate-100 my-3" />
+    <div className="w-full bg-slate-200/70 rounded" style={{ height: h }} />
+  </div>
+);
+
+const SkPanelTable: React.FC<{ rows?: number; className?: string }> = ({ rows = 8, className }) => (
+  <div className={`bg-white rounded-xl border border-slate-200 p-[clamp(10px,1vw,14px)] shadow-sm animate-pulse ${className || ""}`}>
+    <SkBar w="w-48" h="h-4" />
+    <div className="h-[1px] w-full bg-slate-100 my-3" />
+    <div className="space-y-2">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="h-4 bg-slate-200/80 rounded" />
+      ))}
+    </div>
+  </div>
+);
+
+const SkMiniStats = () => (
+  <div className="bg-white rounded-xl border border-slate-200 p-[clamp(10px,1vw,14px)] shadow-sm animate-pulse h-[clamp(220px,28vh,320px)]">
+    <SkBar w="w-40" h="h-4" />
+    <div className="space-y-4 mt-4">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="flex items-center justify-between">
+          <SkBar w="w-24" h="h-3" />
+          <SkBar w="w-12" h="h-6" />
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 /* ======================= Componente ======================= */
 const DashboardPais: React.FC = () => {
   const navigate = useNavigate();
@@ -97,14 +170,12 @@ const DashboardPais: React.FC = () => {
   // ---- State ----
   const [start, setStart] = useState(DEFAULT_START);
   const [end, setEnd] = useState(DEFAULT_END);
-  const [onlyWithAnalysis, setOnlyWithAnalysis] = useState(false); // mantiene UI
+  const [onlyWithAnalysis, setOnlyWithAnalysis] = useState(false);
   const [countryFilter, setCountryFilter] = useState<string>("");
 
   const [items, setItems] = useState<CallRecord2[]>([]);
   const [topCountriesRaw, setTopCountriesRaw] = useState<any[]>([]);
   const [agentsByCountryRaw, setAgentsByCountryRaw] = useState<any[]>([]);
-
-  // nuevos endpoints
   const [kpiSummary, setKpiSummary] = useState<any | null>(null);
   const [qualityMetrics, setQualityMetrics] = useState<any | null>(null);
   const [topAgentsRaw, setTopAgentsRaw] = useState<any[]>([]);
@@ -113,6 +184,8 @@ const DashboardPais: React.FC = () => {
   const [chartLoading, setChartLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAllRows, setShowAllRows] = useState(false);
+  const [barTopCount, setBarTopCount] = useState<12 | 20>(12);
+  const [tableTab, setTableTab] = useState<"pais">("pais");
 
   // ---- Fetch de llamadas con el NUEVO endpoint by-date ----
   const fetchCalls = async () => {
@@ -168,14 +241,13 @@ const DashboardPais: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start, end, onlyWithAnalysis, isAdmin, loadingMe, countryFilter]);
 
-  /* ======================= Derivados (useMemo) ======================= */
+  /* ======================= Derivados ======================= */
   const itemsFiltered = useMemo(() => {
     if (!countryFilter) return items;
     return items.filter((it) => (it.pais || "N/A") === countryFilter);
   }, [items, countryFilter]);
 
   const days = useMemo(() => rangeDaysUTC(start, end), [start, end]);
-  void days;
 
   type PaisAgg = {
     total: number;
@@ -241,7 +313,6 @@ const DashboardPais: React.FC = () => {
       .sort((a, b) => b.total - a.total);
   }, [topCountriesRaw]);
 
-  // Llamadas y agentes por país (corrige "Agentes únicos" = 1)
   const { callsByPaisFromAgents, uniqueAgentsByPais, showUniqueAgentsCol } =
     useMemo(() => {
       const callsBy = new Map<string, number>();
@@ -253,13 +324,11 @@ const DashboardPais: React.FC = () => {
         const pais = getCountry(row);
         if (!pais) return;
 
-        // Sumatoria de llamadas si viene en el payload
         const t = getTotal(row);
         if (Number.isFinite(t)) {
           callsBy.set(pais, (callsBy.get(pais) || 0) + t);
         }
 
-        // Caso 1: el endpoint trae total_agents (preferido)
         if (typeof row?.total_agents === "number") {
           reliable = true;
           const val = Math.max(0, Number(row.total_agents));
@@ -267,7 +336,6 @@ const DashboardPais: React.FC = () => {
           return;
         }
 
-        // Caso 2: trae un arreglo de agents
         if (Array.isArray(row?.agents)) {
           reliable = true;
           const set = uniqSets.get(pais) || new Set<string>();
@@ -279,7 +347,6 @@ const DashboardPais: React.FC = () => {
           return;
         }
 
-        // Caso 3 (fallback): fila por agente
         const key = getAgentKey(row);
         if (key && key !== "N/A") {
           const set = uniqSets.get(pais) || new Set<string>();
@@ -288,13 +355,11 @@ const DashboardPais: React.FC = () => {
         }
       });
 
-      // Completar counts desde sets cuando no hubo total_agents explícito
       uniqSets.forEach((set, pais) => {
         if (!uniqCounts.has(pais)) uniqCounts.set(pais, set.size);
       });
 
-      const show =
-        reliable || Array.from(uniqCounts.values()).some((v) => v > 1);
+      const show = reliable || Array.from(uniqCounts.values()).some((v) => v > 1);
 
       return {
         callsByPaisFromAgents: callsBy,
@@ -331,13 +396,12 @@ const DashboardPais: React.FC = () => {
     return c;
   }, [totalLlamadasFromCalls, callsByCountriesEndpoint, callsByPaisFromAgents]);
 
-  // ⬇️ Ya no TOP: usamos todos los países disponibles
   const countriesAll = useMemo(() => rowsMerged, [rowsMerged]);
   const lineCountries = useMemo(() => rowsMerged, [rowsMerged]);
 
   const lineDatasets = useMemo(() => {
     return lineCountries.map((c, idx) => {
-      const serie = rangeDaysUTC(start, end).map(
+      const serie = days.map(
         (d) => (aggByPais.get(c.pais)?.byDay?.[d] || 0) as number
       );
       return {
@@ -345,31 +409,33 @@ const DashboardPais: React.FC = () => {
         data: serie,
         borderColor: PALETTE[idx % PALETTE.length],
         backgroundColor: `${PALETTE[idx % PALETTE.length]}22`,
-        tension: 0.4,
-        borderWidth: 3,
-        pointRadius: 2.5,
+        tension: 0.35,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHitRadius: 12,
+        pointHoverRadius: 4,
         fill: true,
       };
     });
-  }, [lineCountries, start, end, aggByPais]);
+  }, [lineCountries, days, aggByPais]);
 
-  const barCallsByCountryData = useMemo(
-    () => ({
-      labels: countriesAll.map((r) => r.pais),
+  const barCallsByCountryData = useMemo(() => {
+    const top = countriesAll.slice(0, barTopCount);
+    return {
+      labels: top.map((r) => r.pais),
       datasets: [
         {
           label: "Llamadas",
-          data: countriesAll.map((r) => r.total),
-          backgroundColor: countriesAll.map(
-            (_, i) => PALETTE[i % PALETTE.length]
-          ),
-          borderRadius: 10,
-          barThickness: 26,
+          data: top.map((r) => r.total),
+          backgroundColor: top.map((_, i) => PALETTE[i % PALETTE.length]),
+          borderRadius: 8,
+          barThickness: 22,
+          categoryPercentage: 0.7,
+          barPercentage: 0.8,
         },
       ],
-    }),
-    [countriesAll]
-  );
+    };
+  }, [countriesAll, barTopCount]);
 
   const doughnutShareData = useMemo(
     () => ({
@@ -377,9 +443,7 @@ const DashboardPais: React.FC = () => {
       datasets: [
         {
           data: rowsMerged.map((r) => r.total),
-          backgroundColor: rowsMerged.map(
-            (_, i) => PALETTE[i % PALETTE.length]
-          ),
+          backgroundColor: rowsMerged.map((_, i) => PALETTE[i % PALETTE.length]),
           borderWidth: 1,
         },
       ],
@@ -388,8 +452,8 @@ const DashboardPais: React.FC = () => {
   );
 
   const lineEvolucionData = useMemo(
-    () => ({ labels: rangeDaysUTC(start, end), datasets: lineDatasets }),
-    [start, end, lineDatasets]
+    () => ({ labels: days, datasets: lineDatasets }),
+    [days, lineDatasets]
   );
 
   const countriesForSelect = useMemo(() => {
@@ -398,7 +462,7 @@ const DashboardPais: React.FC = () => {
     return ["", ...Array.from(set.values()).sort()];
   }, [rowsMerged]);
 
-  // QUALITY: buckets (duración) y callers
+  // QUALITY
   const qualityBucketsData = useMemo(() => {
     const buckets: Array<{ label: string; count: number }> =
       qualityMetrics?.buckets || [];
@@ -480,36 +544,35 @@ const DashboardPais: React.FC = () => {
       .slice(0, 10);
   }, [topAgentsRaw]);
 
-  // ====================== UI (sin hooks nuevos) ======================
-
+  /* ======================= FilterBar ======================= */
   const FilterBar = (
-    <div className="bg-white/95 border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-wrap items-end gap-3">
+    <div className="bg-white/95 border border-slate-200 rounded-xl p-[clamp(8px,1vw,14px)] shadow-sm flex flex-wrap items-end gap-[clamp(6px,0.8vw,12px)]">
       <div className="flex flex-col">
-        <label className="text-xs font-semibold text-slate-600">Desde</label>
+        <label className="text-[clamp(11px,0.8vw,12px)] font-semibold text-slate-600">Desde</label>
         <input
           type="date"
           value={start}
           onChange={(e) => setStart(e.target.value)}
-          className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+          className="border border-slate-300 rounded-md px-2 py-1 text-[clamp(12px,0.85vw,13px)] h-[clamp(32px,3.2vh,36px)]"
           max={end}
         />
       </div>
       <div className="flex flex-col">
-        <label className="text-xs font-semibold text-slate-600">Hasta</label>
+        <label className="text-[clamp(11px,0.8vw,12px)] font-semibold text-slate-600">Hasta</label>
         <input
           type="date"
           value={end}
           onChange={(e) => setEnd(e.target.value)}
-          className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+          className="border border-slate-300 rounded-md px-2 py-1 text-[clamp(12px,0.85vw,13px)] h-[clamp(32px,3.2vh,36px)]"
           min={start}
         />
       </div>
       <div className="flex flex-col">
-        <label className="text-xs font-semibold text-slate-600">País</label>
+        <label className="text-[clamp(11px,0.8vw,12px)] font-semibold text-slate-600">País</label>
         <select
           value={countryFilter}
           onChange={(e) => setCountryFilter(e.target.value)}
-          className="border border-slate-300 rounded-lg px-3 py-2 text-sm min-w-[180px]"
+          className="border border-slate-300 rounded-md px-2 py-1 text-[clamp(12px,0.85vw,13px)] min-w-[180px] h-[clamp(32px,3.2vh,36px)]"
         >
           {countriesForSelect.map((p) => (
             <option key={p || "all"} value={p}>
@@ -518,7 +581,7 @@ const DashboardPais: React.FC = () => {
           ))}
         </select>
       </div>
-      <label className="text-sm text-slate-700 flex items-center gap-2">
+      <label className="text-[clamp(12px,0.9vw,13px)] text-slate-700 flex items-center gap-2">
         <input
           type="checkbox"
           checked={onlyWithAnalysis}
@@ -536,7 +599,7 @@ const DashboardPais: React.FC = () => {
               else if (v === "agente") navigate("/dashboard/agente");
               else navigate("/dashboard/pais");
             }}
-            className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-slate-300 rounded-md px-2 py-1 text-[clamp(12px,0.85vw,13px)] h-[clamp(32px,3.2vh,36px)]"
           >
             <option value="general">General</option>
             <option value="agente">Por agente</option>
@@ -550,27 +613,19 @@ const DashboardPais: React.FC = () => {
   // ---- Guards de acceso ----
   if (loadingMe) {
     return (
-      <div className="min-h-screen w-full bg-[#f6f7fb]">
-        <div className="w-full mx-auto max-w-[1700px] px-6 2xl:px-10 py-6">
-          <div className="max-w-2xl mx-auto">
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-pulse h-[120px]" />
-          </div>
-        </div>
+      <div className="h-screen w-full bg-[#f6f7fb] flex items-center justify-center">
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm animate-pulse w-[360px] h-[120px]" />
       </div>
     );
   }
   if (errorMe || !isAdmin) {
     return (
-      <div className="min-h-screen w-full bg-[#f6f7fb] px-6 2xl:px-10 py-6 flex items-center justify-center">
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-8 text-center max-w-lg">
-          <h2 className="text-xl font-extrabold text-slate-800">
-            Acceso restringido
-          </h2>
-          <p className="mt-2 text-slate-600">
-            Esta vista está disponible solo para cuentas <b>Admin</b>.
-          </p>
+      <div className="h-screen w-full bg-[#f6f7fb] px-6 2xl:px-10 py-6 flex items-center justify-center">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-8 text-center max-w-lg">
+          <h2 className="text-lg font-extrabold text-slate-800">Acceso restringido</h2>
+          <p className="mt-1 text-slate-600 text-sm">Esta vista está disponible solo para cuentas <b>Admin</b>.</p>
           <button
-            className="mt-5 px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700"
+            className="mt-4 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700"
             onClick={() => navigate("/dashboard")}
           >
             Ir al Dashboard
@@ -580,30 +635,46 @@ const DashboardPais: React.FC = () => {
     );
   }
 
-  // ---- UI states ----
+  /* ======================= LOADING que calza con la vista ======================= */
   if (loading) {
     return (
-      <div className="min-h-screen w-full bg-[#f6f7fb]">
-        <div className="w-full mx-auto max-w-[1700px] px-6 2xl:px-10 py-6 space-y-6">
+      <div className="h-screen w-full bg-[#f6f7fb] overflow-hidden">
+        <div className="max-w-none h-full mx-auto px-[clamp(10px,1.2vw,28px)] py-[clamp(8px,1vh,16px)] flex flex-col gap-[clamp(8px,1vh,14px)]">
           {FilterBar}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-pulse h-[300px]" />
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-pulse h-[300px]" />
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-pulse h-[320px]" />
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm animate-pulse h-[320px]" />
+
+          {/* KPIs */}
+          <SkKpiRow />
+
+          {/* Rejilla principal: IZQ 8 col / DER 4 col */}
+          <div className="grid grid-cols-12 gap-[clamp(8px,1vw,14px)] min-h-0 flex-1">
+            {/* IZQ */}
+            <div className="col-span-12 xl:col-span-8 grid grid-cols-1 gap-[clamp(8px,1vw,14px)]">
+              <SkPanelChart h={360} />
+              <SkPanelChart h={340} />
+            </div>
+            {/* DER */}
+            <div className="col-span-12 xl:col-span-4 grid grid-cols-1 gap-[clamp(8px,1vw,14px)]">
+              <SkPanelChart h={360} />
+              <SkPanelTable rows={8} />
+            </div>
+          </div>
+
+          {/* Bloque inferior: Buckets + Llamantes */}
+          <div className="grid grid-cols-12 gap-[clamp(8px,1vw,14px)]">
+            <SkPanelChart h={320} className="col-span-12 xl:col-span-8" />
+            <SkMiniStats />
           </div>
         </div>
       </div>
     );
   }
+
   if (error) {
     return (
-      <div className="min-h-screen w-full bg-[#f6f7fb]">
-        <div className="w-full mx-auto max-w-[1700px] px-6 2xl:px-10 py-6 space-y-4">
+      <div className="h-screen w-full bg-[#f6f7fb]">
+        <div className="max-w-none h-full mx-auto px-[clamp(10px,1.2vw,28px)] py-[clamp(8px,1vh,16px)] flex flex-col gap-[clamp(8px,1vh,14px)]">
           {FilterBar}
-          <div className="p-4 rounded-2xl bg-red-50 text-red-700 border border-red-200">
-            {error}
-          </div>
+          <div className="p-3 rounded-xl bg-red-50 text-red-700 border border-red-200 text-sm">{error}</div>
         </div>
       </div>
     );
@@ -625,107 +696,58 @@ const DashboardPais: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen w-full bg-[#f6f7fb]">
-      <div className="w-full mx-auto max-w-[1700px] px-6 2xl:px-10 py-6 space-y-6">
+    <div className="h-screen w-full bg-[#f6f7fb] overflow-hidden">
+      <div className="max-w-none h-full mx-auto px-[clamp(10px,1.2vw,28px)] py-[clamp(8px,1vh,16px)] flex flex-col gap-[clamp(8px,1vh,14px)]">
         {/* Header */}
-        <div className="flex items-start justify-between">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-[#1f2a56] text-[28px] font-extrabold tracking-tight">
+            <h1 className="text-[#1f2a56] font-extrabold tracking-tight leading-none text-[clamp(18px,1.6vw,24px)]">
               Rendimiento por País
             </h1>
-            <p className="text-slate-600 mt-1 text-sm">
+            <div className="text-slate-600 mt-1 text-[clamp(11px,0.9vw,13px)]">
               Rango <b>{start}</b> a <b>{end}</b>
-              {countryFilter ? (
-                <>
-                  {" "}
-                  · País: <b>{countryFilter}</b>
-                </>
-              ) : null}{" "}
-              — Total llamadas: <b>{numberFormat(totalLlamadas)}</b>
-            </p>
+              {countryFilter ? <> · País: <b>{countryFilter}</b></> : null} — Total llamadas:{" "}
+              <b>{numberFormat(totalLlamadas)}</b>
+            </div>
           </div>
         </div>
 
         {/* Filtros */}
         {FilterBar}
 
-        {/* KPIs fila 1 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <div className="text-xs text-slate-500">Países con actividad</div>
-            <div className="text-2xl md:text-3xl font-bold text-indigo-600">
-              {numberFormat(totalPaises)}
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <div className="text-xs text-slate-500">Total de llamadas</div>
-            <div className="text-2xl md:text-3xl font-bold text-indigo-600">
-              {numberFormat(totalLlamadas)}
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <div className="text-xs text-slate-500">País líder (llamadas)</div>
-            <div className="text-base font-semibold text-slate-800">
-              {topPaisNombre}
-            </div>
-            <div className="text-sm text-slate-500">
-              {numberFormat(topPaisTotal)} llamadas
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <div className="text-xs text-slate-500">
-              Agentes únicos (suma por país)
-            </div>
-            <div className="text-2xl md:text-3xl font-bold text-indigo-600">
-              {numberFormat(totalAgentesUnicos)}
-            </div>
-          </div>
+        {/* KPIs */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-[clamp(8px,1vw,14px)]">
+          <KpiCard label="Países con actividad" value={numberFormat(totalPaises)} />
+          <KpiCard label="Total de llamadas" value={numberFormat(totalLlamadas)} />
+          <KpiCard label="País líder (llamadas)" value={topPaisNombre} hint={`${numberFormat(topPaisTotal)} llamadas`} />
+          <KpiCard label="Agentes únicos (suma por país)" value={numberFormat(totalAgentesUnicos)} />
         </div>
 
-        {/* KPIs fila 2 - Quality & KPI Summary */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <div className="text-xs text-slate-500">Tasa de atención</div>
-            <div className="text-2xl md:text-3xl font-bold text-indigo-600">
-              {answeredRatePct.toFixed(1)}%
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <div className="text-xs text-slate-500">TMO promedio</div>
-            <div className="text-2xl md:text-3xl font-bold text-indigo-600">
-              {avgDurMin.toFixed(1)} min
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <div className="text-xs text-slate-500">Hold promedio</div>
-            <div className="text-2xl md:text-3xl font-bold text-indigo-600">
-              {holdAvgMin.toFixed(1)} min
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <div className="text-xs text-slate-500">Tasa de hold</div>
-            <div className="text-2xl md:text-3xl font-bold text-indigo-600">
-              {holdRatePct.toFixed(1)}%
-            </div>
-          </div>
-        </div>
-
-        {/* Charts Fila 1 */}
-        <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm 2xl:col-span-2">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[#1f2a56] font-semibold">Llamadas por país</h3>
-              {chartLoading && (
-                <span className="text-slate-500 text-xs animate-pulse">
-                  Actualizando…
-                </span>
-              )}
-            </div>
-            <div className="h-[360px]">
+        {/* Rejilla principal */}
+        <div className="grid grid-cols-12 gap-[clamp(8px,1vw,14px)] min-h-0 flex-1">
+          {/* IZQUIERDA */}
+          <div className="col-span-12 xl:col-span-8 grid grid-cols-1 min-w-0 min-h-0 gap-[clamp(8px,1vw,14px)] grid-rows-[minmax(0,0.47fr)_minmax(0,0.53fr)]">
+            <Panel
+              title="Llamadas por país"
+              extra={
+                <div className="flex items-center gap-2">
+                  <span className="text-[clamp(10px,0.8vw,12px)] text-slate-600">Mostrar:</span>
+                  <select
+                    value={barTopCount}
+                    onChange={(e) => setBarTopCount(Number(e.target.value) === 20 ? 20 : 12)}
+                    className="border border-slate-300 rounded-md px-2 py-1 text-[clamp(10px,0.8vw,12px)]"
+                  >
+                    <option value={12}>Top 12</option>
+                    <option value={20}>Top 20</option>
+                  </select>
+                </div>
+              }
+              className="h-full min-w-0"
+            >
               <Bar
                 data={barCallsByCountryData}
                 options={{
-                  indexAxis: "y" as const,
+                  indexAxis: "y",
                   responsive: true,
                   maintainAspectRatio: false,
                   animation: { duration: 600 },
@@ -737,10 +759,7 @@ const DashboardPais: React.FC = () => {
                           const value = ctx.parsed.x ?? ctx.parsed;
                           const p =
                             totalLlamadas > 0
-                              ? ` (${(
-                                  (value / totalLlamadas) *
-                                  100
-                                ).toFixed(1)}%)`
+                              ? ` (${((value / totalLlamadas) * 100).toFixed(1)}%)`
                               : "";
                           return `Llamadas: ${numberFormat(value)}${p}`;
                         },
@@ -748,26 +767,46 @@ const DashboardPais: React.FC = () => {
                     },
                   },
                   scales: {
-                    x: { beginAtZero: true, grid: { color: "#eef2ff" } },
-                    y: { grid: { display: false } },
+                    x: { beginAtZero: true, grid: { color: "#eef2ff" }, ticks: { font: { size: 10 } } },
+                    y: { grid: { display: false }, ticks: { font: { size: 10 } } },
                   },
                 }}
               />
-            </div>
+            </Panel>
+
+            <Panel title="Evolución diaria de llamadas por país" className="h-full min-w-0">
+              <Line
+                data={lineEvolucionData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  animation: { duration: 500 },
+                  interaction: { mode: "index", intersect: false },
+                  plugins: {
+                    legend: {
+                      position: "top",
+                      labels: { boxWidth: 16, usePointStyle: true, pointStyle: "circle" },
+                    },
+                    tooltip: {
+                      enabled: true,
+                      callbacks: {
+                        title: (items) => (items[0]?.label ? `Día: ${items[0].label}` : ""),
+                        label: (ctx) => `${ctx.dataset?.label || "País"}: ${ctx.parsed.y ?? 0}`,
+                      },
+                    },
+                  },
+                  scales: {
+                    y: { beginAtZero: true, grid: { color: "#eef2ff" }, ticks: { font: { size: 10 } } },
+                    x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                  },
+                }}
+              />
+            </Panel>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[#1f2a56] font-semibold">
-                Participación por país
-              </h3>
-              {chartLoading && (
-                <span className="text-slate-500 text-xs animate-pulse">
-                  Actualizando…
-                </span>
-              )}
-            </div>
-            <div className="h-[360px]">
+          {/* DERECHA */}
+          <div className="col-span-12 xl:col-span-4 grid min-w-0 min-h-0 gap-[clamp(8px,1vw,14px)] grid-rows-[minmax(0,0.47fr)_minmax(0,0.53fr)]">
+            <Panel title="Participación por país" className="h-full min-w-0">
               {pieHasData ? (
                 <Pie
                   data={doughnutShareData}
@@ -775,17 +814,12 @@ const DashboardPais: React.FC = () => {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                      legend: { position: "right" },
+                      legend: { position: "bottom", labels: { font: { size: 11 } } },
                       tooltip: {
                         callbacks: {
                           label: (ctx) => {
                             const v = ctx.parsed;
-                            const p =
-                              totalLlamadas > 0
-                                ? ` (${((v / totalLlamadas) * 100).toFixed(
-                                    1
-                                  )}%)`
-                                : "";
+                            const p = totalLlamadas > 0 ? ` (${((v / totalLlamadas) * 100).toFixed(1)}%)` : "";
                             return `${numberFormat(v)}${p}`;
                           },
                         },
@@ -798,204 +832,166 @@ const DashboardPais: React.FC = () => {
                   Sin datos para graficar
                 </div>
               )}
-            </div>
+            </Panel>
+
+            <Panel
+              title={tableTab === "pais" ? "Resumen por País" : "Top agentes"}
+              extra={
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setTableTab("pais")}
+                    className={`px-3 py-1.5 rounded-lg border text-[clamp(11px,0.85vw,13px)] ${tableTab==="pais" ? "bg-slate-100 border-slate-300" : "border-slate-300 hover:bg-slate-50"}`}
+                  >
+                    País
+                  </button>
+                  {tableTab === "pais" && rowsSorted.length > 12 && (
+                    <button
+                      onClick={() => setShowAllRows((v) => !v)}
+                      className="text-[clamp(11px,0.85vw,13px)] px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
+                    >
+                      {showAllRows ? "Ver menos" : "Ver más"}
+                    </button>
+                  )}
+                </div>
+              }
+              className="h-full min-w-0"
+            >
+              {tableTab === "pais" ? (
+                <div className="overflow-auto h-full">
+                  <table className="w-full min-w-[820px] text-[clamp(11px,0.85vw,13px)]">
+                    <thead className="sticky top-0 z-10">
+                      <tr className="bg-slate-50 text-[#1f2a56]">
+                        <th className="px-3 py-2 text-left font-semibold">País</th>
+                        <th className="px-3 py-2 text-left font-semibold">Llamadas</th>
+                        <th className="px-3 py-2 text-left font-semibold">% del total</th>
+                        <th className="px-3 py-2 text-left font-semibold">TMO prom. (min)</th>
+                        {showUniqueAgentsCol && (
+                          <th className="px-3 py-2 text-left font-semibold">Agentes únicos</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rowsToShow.map((r) => {
+                        const percent =
+                          totalLlamadas > 0 ? ((r.total / totalLlamadas) * 100).toFixed(1) + "%" : "—";
+                        const uniqueAgents = uniqueAgentsByPais.get(r.pais) || 0;
+                        return (
+                          <tr key={r.pais} className="border-b last:border-0 hover:bg-slate-50">
+                            <td className="px-3 py-2 font-medium">{r.pais}</td>
+                            <td className="px-3 py-2">{numberFormat(r.total)}</td>
+                            <td className="px-3 py-2">{percent}</td>
+                            <td className="px-3 py-2">{r.tmoMin ? r.tmoMin.toFixed(1) : "—"}</td>
+                            {showUniqueAgentsCol && <td className="px-3 py-2">{numberFormat(uniqueAgents)}</td>}
+                          </tr>
+                        );
+                      })}
+                      {rowsToShow.length === 0 && (
+                        <tr>
+                          <td colSpan={showUniqueAgentsCol ? 5 : 4} className="px-3 py-6 text-center text-slate-500">
+                            No hay registros para este rango.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="overflow-auto h-full">
+                  <table className="w-full min-w-[820px] text-[clamp(11px,0.85vw,13px)]">
+                    <thead className="sticky top-0 z-10">
+                      <tr className="bg-slate-50 text-[#1f2a56]">
+                        <th className="px-3 py-2 text-left font-semibold">Agente</th>
+                        <th className="px-3 py-2 text-left font-semibold">País</th>
+                        <th className="px-3 py-2 text-left font-semibold">Llamadas</th>
+                        <th className="px-3 py-2 text-left font-semibold">Atendidas</th>
+                        <th className="px-3 py-2 text-left font-semibold">Tasa atención</th>
+                        <th className="px-3 py-2 text-left font-semibold">TMO prom. (min)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topAgents.map((r) => (
+                        <tr key={r.id} className="border-b last:border-0 hover:bg-slate-50">
+                          <td className="px-3 py-2 font-medium">{r.name}</td>
+                          <td className="px-3 py-2">{r.pais || "—"}</td>
+                          <td className="px-3 py-2">{numberFormat(r.llamadas)}</td>
+                          <td className="px-3 py-2">{numberFormat(r.atendidas)}</td>
+                          <td className="px-3 py-2">{typeof r.tasa === "number" ? `${(r.tasa * 100).toFixed(1)}%` : "—"}</td>
+                          <td className="px-3 py-2">{typeof r.durPromMin === "number" ? r.durPromMin.toFixed(1) : "—"}</td>
+                        </tr>
+                      ))}
+                      {topAgents.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-3 py-6 text-center text-slate-500">
+                            No hay agentes para este rango/país.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Panel>
           </div>
         </div>
 
-        {/* Charts Fila 2 */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-[#1f2a56] font-semibold">
-              Evolución diaria de llamadas por país
-            </h3>
-            {chartLoading && (
-              <span className="text-slate-500 text-xs animate-pulse">
-                Actualizando…
-              </span>
-            )}
-          </div>
-          <div className="h-[340px]">
-            <Line
-              data={lineEvolucionData}
+        {/* Bloque inferior */}
+        <div className="grid grid-cols-12 gap-[clamp(8px,1vw,14px)]">
+          <Panel title="Distribución por duración (Quality Metrics)" className="col-span-12 xl:col-span-8 h-[clamp(220px,28vh,320px)]">
+            <Bar
+              data={qualityBucketsData}
               options={{
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: { duration: 600 },
-                plugins: {
-                  legend: {
-                    position: "top",
-                    labels: {
-                      boxWidth: 18,
-                      usePointStyle: true,
-                      pointStyle: "circle",
-                    },
-                  },
-                },
+                plugins: { legend: { display: false } },
                 scales: {
-                  y: { beginAtZero: true, grid: { color: "#eef2ff" } },
-                  x: { grid: { display: false } },
+                  x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                  y: { beginAtZero: true, grid: { color: "#eef2ff" }, ticks: { font: { size: 10 } } },
                 },
               }}
             />
-          </div>
-        </div>
+          </Panel>
 
-        {/* Quality buckets + callers */}
-        <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm 2xl:col-span-2">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[#1f2a56] font-semibold">
-                Distribución por duración (Quality Metrics)
-              </h3>
-            </div>
-            <div className="h-[320px]">
-              <Bar
-                data={qualityBucketsData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: { legend: { display: false } },
-                  scales: {
-                    x: { grid: { display: false } },
-                    y: { beginAtZero: true, grid: { color: "#eef2ff" } },
-                  },
-                }}
-              />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-            <h3 className="text-[#1f2a56] font-semibold mb-2">Llamantes</h3>
-            <div className="space-y-3">
+          <Panel title="Llamantes" className="col-span-12 xl:col-span-4 h-[clamp(220px,28vh,320px)]">
+            <div className="h-full w-full grid content-center gap-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Únicos</span>
-                <span className="text-lg font-bold text-indigo-600">
+                <span className="text-[clamp(12px,0.9vw,13px)] text-slate-600">Únicos</span>
+                <span className="text-indigo-600 font-bold text-[clamp(18px,1.6vw,24px)]">
                   {numberFormat(uniqueCallers)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Reincidentes</span>
-                <span className="text-lg font-bold text-indigo-600">
-                  {numberFormat(
-                    (qualityMetrics?.callers?.repeat_callers ?? 0) as number
-                  )}
+                <span className="text-[clamp(12px,0.9vw,13px)] text-slate-600">Reincidentes</span>
+                <span className="text-indigo-600 font-bold text-[clamp(18px,1.6vw,24px)]">
+                  {numberFormat((qualityMetrics?.callers?.repeat_callers ?? 0) as number)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-600">Tasa de repetición</span>
-                <span className="text-lg font-bold text-indigo-600">
+                <span className="text-[clamp(12px,0.9vw,13px)] text-slate-600">Tasa de repetición</span>
+                <span className="text-indigo-600 font-bold text-[clamp(18px,1.6vw,24px)]">
                   {repeatRatePct.toFixed(1)}%
                 </span>
               </div>
+              <div className="h-[1px] bg-slate-100 my-1" />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-[clamp(11px,0.8vw,12px)] text-slate-500">Tasa de atención</div>
+                  <div className="text-indigo-600 font-bold text-[clamp(16px,1.3vw,20px)]">{answeredRatePct.toFixed(1)}%</div>
+                </div>
+                <div>
+                  <div className="text-[clamp(11px,0.8vw,12px)] text-slate-500">TMO prom.</div>
+                  <div className="text-indigo-600 font-bold text-[clamp(16px,1.3vw,20px)]">{avgDurMin.toFixed(1)} min</div>
+                </div>
+                <div>
+                  <div className="text-[clamp(11px,0.8vw,12px)] text-slate-500">Hold prom.</div>
+                  <div className="text-indigo-600 font-bold text-[clamp(16px,1.3vw,20px)]">{holdAvgMin.toFixed(1)} min</div>
+                </div>
+                <div>
+                  <div className="text-[clamp(11px,0.8vw,12px)] text-slate-500">Tasa de hold</div>
+                  <div className="text-indigo-600 font-bold text-[clamp(16px,1.3vw,20px)]">{holdRatePct.toFixed(1)}%</div>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-
-        {/* Top Agentes */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-[#1f2a56] text-lg md:text-xl font-semibold">
-              Top agentes {countryFilter ? `— ${countryFilter}` : ""}
-            </h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-[#1f2a56]">
-                  <th className="px-4 py-3 text-left font-semibold">Agente</th>
-                  <th className="px-4 py-3 text-left font-semibold">País</th>
-                  <th className="px-4 py-3 text-left font-semibold">Llamadas</th>
-                  <th className="px-4 py-3 text-left font-semibold">Atendidas</th>
-                  <th className="px-4 py-3 text-left font-semibold">Tasa atención</th>
-                  <th className="px-4 py-3 text-left font-semibold">TMO prom. (min)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topAgents.map((r) => (
-                  <tr key={r.id} className="border-b last:border-0 hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium">{r.name}</td>
-                    <td className="px-4 py-3">{r.pais || "—"}</td>
-                    <td className="px-4 py-3">{numberFormat(r.llamadas)}</td>
-                    <td className="px-4 py-3">{numberFormat(r.atendidas)}</td>
-                    <td className="px-4 py-3">
-                      {typeof r.tasa === "number" ? `${(r.tasa * 100).toFixed(1)}%` : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {typeof r.durPromMin === "number" ? r.durPromMin.toFixed(1) : "—"}
-                    </td>
-                  </tr>
-                ))}
-                {topAgents.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
-                      No hay agentes para este rango/país.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Tabla por país */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-[#1f2a56] text-lg md:text-xl font-semibold">
-              Resumen por País
-            </h2>
-            {rowsSorted.length > 12 && (
-              <button
-                onClick={() => setShowAllRows((v) => !v)}
-                className="text-sm px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50"
-              >
-                {showAllRows ? "Ver menos" : "Ver más"}
-              </button>
-            )}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-[#1f2a56]">
-                  <th className="px-4 py-3 text-left font-semibold">País</th>
-                  <th className="px-4 py-3 text-left font-semibold">Llamadas</th>
-                  <th className="px-4 py-3 text-left font-semibold">% del total</th>
-                  <th className="px-4 py-3 text-left font-semibold">TMO prom. (min)</th>
-                  {showUniqueAgentsCol && (
-                    <th className="px-4 py-3 text-left font-semibold">Agentes únicos</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {rowsToShow.map((r) => {
-                  const percent =
-                    totalLlamadas > 0
-                      ? ((r.total / totalLlamadas) * 100).toFixed(1) + "%"
-                      : "—";
-                  const uniqueAgents = uniqueAgentsByPais.get(r.pais) || 0;
-                  return (
-                    <tr key={r.pais} className="border-b last:border-0 hover:bg-slate-50">
-                      <td className="px-4 py-3 font-medium">{r.pais}</td>
-                      <td className="px-4 py-3">{numberFormat(r.total)}</td>
-                      <td className="px-4 py-3">{percent}</td>
-                      <td className="px-4 py-3">
-                        {r.tmoMin ? r.tmoMin.toFixed(1) : "—"}
-                      </td>
-                      {showUniqueAgentsCol && (
-                        <td className="px-4 py-3">{numberFormat(uniqueAgents)}</td>
-                      )}
-                    </tr>
-                  );
-                })}
-                {rowsToShow.length === 0 && (
-                  <tr>
-                    <td colSpan={showUniqueAgentsCol ? 5 : 4} className="px-4 py-6 text-center text-slate-500">
-                      No hay registros para este rango.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          </Panel>
         </div>
       </div>
     </div>
