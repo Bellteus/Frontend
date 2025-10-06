@@ -7,9 +7,9 @@ import { ActionLog, ActionLogCreate } from "../types/Logs";
 /* ===============================================================
    AXIOS + JWT por HEADER
    =============================================================== */
-const API_BASE = import.meta.env.VITE_API_URL || "https://bellteus.cbon.site";
-
-//https://bellteus.cbon.site
+const API_BASE_RAW = import.meta.env.VITE_API_URL || "https://bellteus.cbon.site";
+/** Fuerza https por si alguna vez llega en http y evita redirecciones en preflight */
+const API_BASE = API_BASE_RAW.replace(/^http:\/\//, "https://");
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -456,20 +456,23 @@ export const CountryPerformanceService = {
   },
 };
 
+/* ===============================================================
+   LOGS SERVICE (con trailing slash para evitar 307/redirect en preflight)
+   =============================================================== */
 export const LogsService = {
   /**
-   * GET /logs?limit=N
+   * GET /logs/?limit=N
    */
   list: async (limit?: number) => {
-    const { data } = await api.get<ActionLog[]>("/logs", { params: { limit } });
+    const { data } = await api.get<ActionLog[]>("/logs/", { params: { limit } });
     return data;
   },
 
   /**
-   * POST /logs
+   * POST /logs/
    */
   create: async (log: ActionLogCreate) => {
-    const { data } = await api.post<ActionLog>("/logs", log);
+    const { data } = await api.post<ActionLog>("/logs/", log);
     return data;
   },
 
