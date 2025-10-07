@@ -7,17 +7,17 @@ import { ActionLog, ActionLogCreate } from "../types/Logs";
 /* ===============================================================
    AXIOS + JWT por HEADER (auto-dev/prod)
    =============================================================== */
-const RAW = (import.meta.env.VITE_API_URL || "").trim();
+//const RAW = (import.meta.env.VITE_API_URL || "").trim();
 
 
-const DEFAULT_LOCAL = "http://localhost:8000";
+// const DEFAULT_LOCAL = "http://localhost:8000";
 const DEFAULT_PROD  = "https://bellteus.cbon.site";
 
-const host = typeof window !== "undefined" ? window.location.hostname : "";
-const isLocalHostName = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(host);
+//const host = typeof window !== "undefined" ? window.location.hostname : "";
+// const isLocalHostName = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(host);
 
 // Base inicial: env > host
-let API_BASE = RAW || (isLocalHostName ? DEFAULT_LOCAL : DEFAULT_PROD);
+let API_BASE = DEFAULT_PROD;
 
 // quita / al final para no duplicar slash en llamadas
 API_BASE = API_BASE.replace(/\/+$/, "");
