@@ -181,7 +181,8 @@ const DashboardPais: React.FC = () => {
   const [topAgentsRaw, setTopAgentsRaw] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [chartLoading, setChartLoading] = useState(true);
+  // usamos solo el setter para forzar un micro re-render tras montar gráficas
+  const [, setChartLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAllRows, setShowAllRows] = useState(false);
   const [barTopCount, setBarTopCount] = useState<12 | 20>(12);

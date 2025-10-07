@@ -148,7 +148,8 @@ const DashboardAgente: React.FC = () => {
   const [allCountries, setAllCountries] = useState<string[]>([]);
 
   const [loading, setLoading] = useState(true);
-  const [chartLoading, setChartLoading] = useState(true);
+  // usamos solo el setter para forzar un micro re-render tras los gráficos
+  const [, setChartLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAllRows, setShowAllRows] = useState(false);
 
@@ -166,6 +167,7 @@ const DashboardAgente: React.FC = () => {
       const { records } = await CallsService.callsByDate(start, end, pais);
       setItems(Array.isArray(records) ? (records as CallRecord2[]) : []);
       setLoading(false);
+      // micro tick para evitar artefactos al montar gráficas
       setChartLoading(true);
       requestAnimationFrame(() => setChartLoading(false));
       setShowAllRows(false);
@@ -213,7 +215,6 @@ const DashboardAgente: React.FC = () => {
     byHour: number[]; // 0..23
   };
 
-  // Obtiene la hora (0-23) tomando UTC del starttime
   const hourOf = (iso?: string | null): number | null => {
     if (!iso) return null;
     const m = iso.match(/T(\d{2}):/);
@@ -866,7 +867,7 @@ const DashboardAgente: React.FC = () => {
               className="h-full min-w-0"
             >
               <div className="overflow-auto h-full">
-                <table className="w-full min-w=[860px] text-[clamp(11px,0.85vw,13px)]">
+                <table className="w-full min-w-[860px] text-[clamp(11px,0.85vw,13px)]">
                   <thead className="sticky top-0 z-10">
                     <tr className="bg-slate-50 text-[#1f2a56]">
                       <th className="px-3 py-2 text-left font-semibold">Agente</th>
