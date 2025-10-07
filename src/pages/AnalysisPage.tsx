@@ -25,6 +25,7 @@ import {
   FiAlertTriangle,
   FiTarget,
   FiUser,
+  FiHash,
 } from "react-icons/fi";
 import { useMe } from "../hook/useMe";
 
@@ -50,11 +51,8 @@ const LABEL_TO_CODE: Record<string, string> = Object.fromEntries(
 function normalizeCountryLabel(raw?: string | null): string {
   if (!raw) return "";
   const t = raw.trim();
-  // Si ya viene como label conocido
   if (COUNTRY_OPTIONS.includes(t as any)) return t;
-  // Si viene como código tipo "PE"
   if (CODE_TO_LABEL[t]) return CODE_TO_LABEL[t];
-  // Fallback: capitalizar primera letra
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
@@ -217,10 +215,20 @@ export function exportarAgentePDF(
     body: [
       ["ID Empleado", String(data.id_empleado)],
       ["Nombre", data.nombre_empleado],
-      ["# Llamadas", data.numero_llamadas ?? "—"],
-      ["Score promedio", n2(data.performance_score_promedio)],
-      ["Satisfacción promedio", n2(data.satisfaccion_cliente_promedio)],
+      ["# Llamadas (válidas)", data.numero_llamadas_validas ?? data.numero_llamadas_crudas ?? "—"],
+      ...(typeof data.numero_llamadas_crudas === "number" && typeof data.numero_llamadas_validas === "number"
+        ? ([
+            ["# Llamadas (crudas)", String(data.numero_llamadas_crudas)],
+            ["Descartadas", String((data.numero_llamadas_crudas - data.numero_llamadas_validas) || 0)],
+            ["Cortas (%)", pct((data as any).cortas_pct as number)],
+          ] as [string, string][])
+        : []),
+      ["Score promedio", n2(data.score_promedio)],
+      ["Satisfacción promedio", n2(data.satisfaccion_promedio)],
       ["Duración prom. (min)", n2(data.duracion_promedio_min)],
+      ...(typeof data.aht_promedio_min === "number"
+        ? ([["AHT prom. (min)", n2(data.aht_promedio_min)]] as [string, string][])
+        : []),
       ["Resueltos", pct(data.resolucion_pct)],
       ["Escalados", pct(data.escalados_pct)],
       ["Follow-up", pct(data.followup_pct)],
@@ -232,6 +240,7 @@ export function exportarAgentePDF(
     (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable
       ?.finalY ?? 80;
 
+  // Cumplimiento protocolo
   if (data.cumplimiento_protocolo) {
     autoTable(doc, {
       startY: lastY0 + 6,
@@ -241,6 +250,26 @@ export function exportarAgentePDF(
         String(v ?? 0),
       ]),
     });
+  }
+
+  // Sentimiento distribución (agente)
+  const sent = (data as any).sentimiento_distribucion as SentimentDistribution | undefined;
+  if (sent) {
+    const lastY1 =
+      (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable
+        ?.finalY ?? 80;
+    const sentPct = normalizeSentiment(sent);
+    if (sentPct) {
+      autoTable(doc, {
+        startY: lastY1 + 6,
+        head: [["Sentimiento", "Distribución"]],
+        body: [
+          ["Positivo", sentPct["positivo"] ?? "—"],
+          ["Neutral", sentPct["neutral"] ?? "—"],
+          ["Negativo", sentPct["negativo"] ?? "—"],
+        ],
+      });
+    }
   }
 
   const addList = (title: string, items?: string[]) => {
@@ -260,6 +289,10 @@ export function exportarAgentePDF(
 
   addList("Fortalezas", data.fortalezas_recurrentes);
   addList("Oportunidades de mejora", data.oportunidades_mejora_recurrentes);
+  addList("Temas frecuentes", (data as any).temas_frecuentes);
+  addList("Motivos de follow-up", (data as any).motivos_followup_top);
+  addList("Palabras clave frecuentes", data.palabras_clave_frecuentes);
+  addList("Alertas de calidad recurrentes", data.alertas_calidad_recurrentes);
   addList("Recomendaciones", data.recomendaciones);
 
   const lastY =
@@ -414,7 +447,6 @@ const PerformanceSelector = () => {
           new Set(
             (res.records || [])
               .filter((r: any) => {
-                // seguridad adicional: si admin eligió un país, filtrar por pais en UI también
                 if (isAdmin && selectedPais) {
                   return normalizeCountryLabel(r.pais) === selectedPais;
                 }
@@ -466,7 +498,7 @@ const PerformanceSelector = () => {
     }
   };
 
-  // Buscar (análisis)
+  // Buscar (análisis) -> AHORA ENVÍA QUERY PARAMS (no body)
   const handleBuscar = async () => {
     setLoading(true);
     setError("");
@@ -479,20 +511,21 @@ const PerformanceSelector = () => {
       if (!fi || !ff) throw new Error("Seleccione fecha inicio y fin.");
 
       if (modo === "pais") {
-        // País: admin puede elegir; no-admin: bloqueado por scope
         const pais = selectedPais;
         if (!pais) throw new Error("Seleccione un país.");
         audit(`Buscó análisis por país "${pais}" (${fi} → ${ff})`);
+
+        // ✅ Query params
         const data = await CountryPerformanceService.analyzeCountry(pais, fi, ff);
         setPaisReport(data);
       } else {
         if (!nombre) throw new Error("Seleccione un agente.");
-        // Nota: el backend ya filtra por scope; para admin la selección de país
-        // controló la lista de agentes. El análisis por agente se hace por nombre.
         audit(
           `Buscó análisis por agente "${nombre}" (${fi} → ${ff})` +
             (isAdmin && selectedPais ? ` en país=${selectedPais}` : "")
         );
+
+        // ✅ Query params (sin país; el backend no lo pide)
         const data = await PerformanceService.analyzeAgent(nombre, fi, ff);
         setAgentReport(data);
       }
@@ -715,8 +748,8 @@ const PerformanceSelector = () => {
                 <FiBarChart2 /> Distribución de tipo de llamada
               </div>
               <SegBar items={[
-                { label: "In", value: safeFrac(paisReport?.calltype_distribucion?.In), className: "bg-sky-500/70" },
-                { label: "Out", value: safeFrac(paisReport?.calltype_distribucion?.Out), className: "bg-indigo-500/70" },
+                { label: "In", value: safeFrac((paisReport as any)?.calltype_distribucion?.In), className: "bg-sky-500/70" },
+                { label: "Out", value: safeFrac((paisReport as any)?.calltype_distribucion?.Out), className: "bg-indigo-500/70" },
               ]} />
             </div>
           </div>
@@ -777,9 +810,13 @@ const PerformanceSelector = () => {
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <StatCard icon={<FiUsers />} label="Nombre" value={agentReport.nombre_empleado} />
             <StatCard icon={<FiFileText />} label="ID" value={String(agentReport.id_empleado)} />
-            <StatCard icon={<FiUsers />} label="# Llamadas" value={agentReport.numero_llamadas ?? "—"} />
-            <StatCard icon={<FiTrendingUp />} label="Score prom." value={n2(agentReport.performance_score_promedio)} />
-            <StatCard icon={<FiSmile />} label="Satisfacción prom." value={n2(agentReport.satisfaccion_cliente_promedio)} />
+            <StatCard
+              icon={<FiUsers />}
+              label="# Llamadas (válidas)"
+              value={agentReport.numero_llamadas_validas ?? agentReport.numero_llamadas_crudas ?? "—"}
+            />
+            <StatCard icon={<FiTrendingUp />} label="Score prom." value={n2(agentReport.score_promedio)} />
+            <StatCard icon={<FiSmile />} label="Satisfacción prom." value={n2(agentReport.satisfaccion_promedio)} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
@@ -787,6 +824,31 @@ const PerformanceSelector = () => {
             <StatCard icon={<FiAlertTriangle />} label="Escalados" value={pct(agentReport.escalados_pct)} />
             <StatCard icon={<FiFileText />} label="Follow-up" value={pct(agentReport.followup_pct)} />
           </div>
+
+          {/* AHT y tiempos */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            <StatCard icon={<FiClock />} label="Duración prom. (min)" value={n2(agentReport.duracion_promedio_min)} />
+            {"aht_promedio_min" in agentReport && (
+              <StatCard icon={<FiClock />} label="AHT prom. (min)" value={n2((agentReport as any).aht_promedio_min as number)} />
+            )}
+            {"wrapup_promedio_seg" in (agentReport as any) && (
+              <StatCard icon={<FiClock />} label="Wrap-up prom. (seg)" value={n2((agentReport as any).wrapup_promedio_seg as number)} />
+            )}
+          </div>
+
+          {/* Distribución de sentimiento (Agente) */}
+          { (agentReport as any).sentimiento_distribucion && (
+            <div className="rounded-lg border border-slate-200 p-4 mt-4">
+              <div className="flex items-center gap-2 mb-2 text-slate-800 font-semibold">
+                <FiBarChart2 /> Distribución de sentimiento (Agente)
+              </div>
+              <SegBar items={[
+                { label: "Positivo", value: safeFrac((agentReport as any).sentimiento_distribucion?.positivo), className: "bg-green-500/70" },
+                { label: "Neutral", value: safeFrac((agentReport as any).sentimiento_distribucion?.neutral), className: "bg-sky-500/70" },
+                { label: "Negativo", value: safeFrac((agentReport as any).sentimiento_distribucion?.negativo), className: "bg-indigo-500/70" },
+              ]} />
+            </div>
+          )}
 
           {agentReport.resumen_ejecutivo && (
             <div className="mt-6">
@@ -797,6 +859,7 @@ const PerformanceSelector = () => {
             </div>
           )}
 
+          {/* Listas cualitativas */}
           <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <div className="font-semibold text-slate-800 mb-2">⭐ Fortalezas</div>
@@ -817,6 +880,56 @@ const PerformanceSelector = () => {
               </ul>
             </div>
           </div>
+
+          {/* Nuevos: temas y motivos follow-up + keywords/alertas */}
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+            {(agentReport as any).temas_frecuentes?.length ? (
+              <div>
+                <div className="font-semibold text-slate-800 mb-2">🏷️ Temas frecuentes</div>
+                <div className="flex flex-wrap gap-2">
+                  {(agentReport as any).temas_frecuentes.map((t: string, i: number) => (
+                    <span key={i} className="text-xs px-2 py-1 rounded-full border border-slate-200 bg-slate-50 flex items-center gap-1">
+                      <FiHash /> {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {(agentReport as any).motivos_followup_top?.length ? (
+              <div>
+                <div className="font-semibold text-slate-800 mb-2">📬 Motivos de follow-up</div>
+                <ul className="list-disc ml-5 space-y-1">
+                  {(agentReport as any).motivos_followup_top.map((m: string, i: number) => <li key={i}>{m}</li>)}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+
+          {(agentReport.palabras_clave_frecuentes?.length || agentReport.alertas_calidad_recurrentes?.length) && (
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+              {agentReport.palabras_clave_frecuentes?.length ? (
+                <div>
+                  <div className="font-semibold text-slate-800 mb-2">🔑 Palabras clave</div>
+                  <div className="flex flex-wrap gap-2">
+                    {agentReport.palabras_clave_frecuentes.map((k, i) => (
+                      <span key={i} className="text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">{k}</span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {agentReport.alertas_calidad_recurrentes?.length ? (
+                <div>
+                  <div className="font-semibold text-slate-800 mb-2">
+                    <FiAlertTriangle className="inline mr-1 text-amber-600" />
+                    Alertas de calidad
+                  </div>
+                  <ul className="list-disc ml-5 space-y-1">
+                    {agentReport.alertas_calidad_recurrentes.map((a, i) => <li key={i}>{a}</li>)}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          )}
         </Card>
       )}
 

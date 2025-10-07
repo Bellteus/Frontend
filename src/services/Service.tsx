@@ -5,11 +5,27 @@ import { AgentPerformanceReport, CountryPerformanceReport } from "../types/Analy
 import { ActionLog, ActionLogCreate } from "../types/Logs";
 
 /* ===============================================================
-   AXIOS + JWT por HEADER
+   AXIOS + JWT por HEADER (auto-dev/prod)
    =============================================================== */
-const API_BASE_RAW = import.meta.env.VITE_API_URL || "https://bellteus.cbon.site";
-/** Fuerza https por si alguna vez llega en http y evita redirecciones en preflight */
-const API_BASE = API_BASE_RAW.replace(/^http:\/\//, "https://");
+const RAW = (import.meta.env.VITE_API_URL || "").trim();
+
+const DEFAULT_LOCAL = "http://localhost:8000";
+const DEFAULT_PROD  = "https://bellteus.cbon.site";
+
+const host = typeof window !== "undefined" ? window.location.hostname : "";
+const isLocalHostName = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(host);
+
+// Base inicial: env > host
+let API_BASE = RAW || (isLocalHostName ? DEFAULT_LOCAL : DEFAULT_PROD);
+
+// quita / al final para no duplicar slash en llamadas
+API_BASE = API_BASE.replace(/\/+$/, "");
+
+// Si viene en http:// y NO es localhost → forzamos https
+const isLocalUrl = /^http:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/.*)?$/i.test(API_BASE);
+if (API_BASE.startsWith("http://") && !isLocalUrl) {
+  API_BASE = API_BASE.replace(/^http:\/\//, "https://");
+}
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -24,7 +40,7 @@ const USER_EMAIL_KEY = "email";
 
 /* ---------- Helpers JWT ---------- */
 interface JWTPayload {
-  sub?: string; // puede ser email o id
+  sub?: string;
   email?: string;
   username?: string;
   user_id?: string | number;
@@ -55,13 +71,11 @@ function persistUserFromToken(token: string) {
   const payload = parseJwt(token);
   if (!payload) return;
 
-  // email: 'email', 'username' o 'sub' si parece email
   const email =
     (payload.email as string) ??
     (payload.username as string) ??
     (typeof payload.sub === "string" && payload.sub.includes("@") ? payload.sub : undefined);
 
-  // id: 'user_id', 'id' o 'sub' si no es email
   const userIdRaw =
     payload.user_id ??
     payload.id ??
@@ -78,7 +92,6 @@ function getToken(): string | null {
 function setToken(t: string) {
   localStorage.setItem(TOKEN_KEY, t);
   api.defaults.headers.common.Authorization = `Bearer ${t}`;
-  // Derivar y guardar email/id desde el JWT
   persistUserFromToken(t);
 }
 function clearToken() {
@@ -201,14 +214,14 @@ export const AuthService = {
     if (!data?.access_token) throw new Error("Token no recibido");
     setToken(data.access_token);
 
-    // OPCIONAL: si el token no traía email/id, intenta enriquecer con /auth/me
+    // OPCIONAL: enriquecer con /auth/me si el JWT no traía email/id
     if (!localStorage.getItem(USER_EMAIL_KEY) || !localStorage.getItem(USER_ID_KEY)) {
       try {
         const { data: me } = await api.get<UserOut>("/auth/me");
         if ((me as any)?.email) localStorage.setItem(USER_EMAIL_KEY, String((me as any).email));
         if ((me as any)?.id) localStorage.setItem(USER_ID_KEY, String((me as any).id));
       } catch {
-        // silencioso: no rompas el login si falla /auth/me
+        // silencioso
       }
     }
 
@@ -251,7 +264,6 @@ export const CallsService = {
     const { data } = await api.get<CallsByDateResponse>("/calls/by-date", {
       params: { start, end, pais },
     });
-    // Devolvemos normalizado y tipado
     return {
       total: Number(data?.total ?? 0),
       usuario: String(data?.usuario ?? ""),
@@ -270,15 +282,7 @@ export const CallsService = {
     pais?: string
   ) => {
     const { data } = await api.get<Page<any>>("/calls/with-transcription", {
-      params: {
-        start,
-        end,
-        page,
-        page_size,
-        only_with_transcription,
-        agent_id,
-        pais,
-      },
+      params: { start, end, page, page_size, only_with_transcription, agent_id, pais },
     });
     return data;
   },
@@ -342,8 +346,9 @@ export const JoinService = {
     end: string,
     page = 1,
     page_size = 50,
-    only_with_analysis = false
+  ...rest: any[]
   ) => {
+    const only_with_analysis = rest?.[0] ?? false;
     const { data } = await api.get<Page<any>>("/calls/with-analysis", {
       params: { start, end, page, page_size, only_with_analysis },
     });
@@ -432,10 +437,10 @@ export const PerformanceService = {
     return data;
   },
 };
-
 /* ===============================================================
    COUNTRY PERFORMANCE SERVICE (por país)
    =============================================================== */
+
 export const CountryPerformanceService = {
   /** POST /country-performance/analyze?pais=...&fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD */
   analyzeCountry: async (pais: string, fecha_inicio: string, fecha_fin: string) => {
@@ -455,30 +460,20 @@ export const CountryPerformanceService = {
     return data;
   },
 };
-
 /* ===============================================================
-   LOGS SERVICE (con trailing slash para evitar 307/redirect en preflight)
+   LOGS SERVICE (con trailing slash para evitar 307)
    =============================================================== */
 export const LogsService = {
-  /**
-   * GET /logs/?limit=N
-   */
   list: async (limit?: number) => {
     const { data } = await api.get<ActionLog[]>("/logs/", { params: { limit } });
     return data;
   },
 
-  /**
-   * POST /logs/
-   */
   create: async (log: ActionLogCreate) => {
     const { data } = await api.post<ActionLog>("/logs/", log);
     return data;
   },
 
-  /**
-   * Azúcar sintáctico legacy.
-   */
   postSupervisorLog: async (payload: {
     user_id: string;
     user_email: string;
@@ -488,12 +483,6 @@ export const LogsService = {
     return LogsService.create(payload);
   },
 
-  /**
-   * Nuevo helper usado por PerformanceSelector:
-   * Construye el payload con user_id y user_email desde localStorage.
-   * Si faltan, hace fallback a leerlos del JWT al vuelo y los persiste.
-   * No lanza error para no romper la UI.
-   */
   audit: async (
     action: string,
     extras?: Partial<Pick<ActionLogCreate, "timestamp">>
@@ -502,7 +491,6 @@ export const LogsService = {
       let user_id = localStorage.getItem(USER_ID_KEY) ?? "";
       let user_email = localStorage.getItem(USER_EMAIL_KEY) ?? "";
 
-      // 🔒 Fallback: si no hay en localStorage, intenta leer del JWT
       if ((!user_id || !user_email) && getToken()) {
         const payload = parseJwt(getToken()!);
         if (!user_email) {
@@ -528,7 +516,6 @@ export const LogsService = {
         ...(extras || {}),
       });
     } catch (err) {
-      // No bloquees la UI si falla el log
       console.warn("[LogsService.audit] fallo al registrar log:", err);
     }
   },

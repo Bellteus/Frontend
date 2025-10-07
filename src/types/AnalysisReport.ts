@@ -1,7 +1,8 @@
 // src/types/AnalysisReport.ts
 
 export interface SentimentDistribution {
-  positivo?: number | null; // fracción 0..1
+  // Para País (fracciones 0..1)
+  positivo?: number | null;
   neutral?: number | null;
   negativo?: number | null;
 }
@@ -54,32 +55,77 @@ export interface CountryPerformanceReport {
   fuente?: string;
 }
 
+/** Para agente: el backend entrega CONTEOS (no fracciones) */
+export interface SentimentCounts {
+  positivo?: number | null;
+  neutral?: number | null;
+  negativo?: number | null;
+}
+
 export interface AgentPerformanceReport {
   id_empleado: number | string;
   nombre_empleado: string;
+
+  // Nuevos contadores del backend
+  numero_llamadas_crudas?: number | null;
+  numero_llamadas_validas?: number | null;
+  llamadas_descartadas?: number | null;
+  cortas_pct?: number | null; // fracción 0..1
+
+  // Alias legacy para no romper UI previa (el backend ya NO los envía)
   numero_llamadas?: number | null;
 
-  performance_score_promedio?: number | null;
-  satisfaccion_cliente_promedio?: number | null;
+  // Métricas nuevas (nombres del backend)
+  score_promedio?: number | null;
+  satisfaccion_promedio?: number | null;
   duracion_promedio_min?: number | null;
+  aht_promedio_min?: number | null;
+  wrapup_promedio_seg?: number | null;
+  hold_promedio_seg?: number | null;
+  holds_promedio?: number | null;
 
-  resolucion_pct?: number | null; // fracción 0..1
-  escalados_pct?: number | null;  // fracción 0..1
-  followup_pct?: number | null;   // fracción 0..1
+  // Tasas (fracciones 0..1)
+  resolucion_pct?: number | null;
+  escalados_pct?: number | null;
+  followup_pct?: number | null;
 
+  // Protocolo: conteos globales
   cumplimiento_protocolo?: Record<string, number> | null; // {"sí": int, "parcial": int, "no": int}
-  sentimiento_predominante?: "positivo" | "neutral" | "negativo" | string | null;
 
+  // Sentimiento
+  sentimiento_predominante?: "positivo" | "neutral" | "negativo" | string | null;
+  sentimiento_distribucion?: SentimentCounts | null; // CONTEOS en el backend
+
+  // Hallazgos cualitativos
   fortalezas_recurrentes?: string[];
   oportunidades_mejora_recurrentes?: string[];
   recomendaciones?: string[];
+
+  // Nuevos campos del prompt/LLM
+  temas_frecuentes?: string[];
+  motivos_followup_top?: string[];
+
+  // Compatibilidad con UI anterior (si existía)
   temas_principales?: string[];
+
+  // Otros
   palabras_clave_frecuentes?: string[];
   alertas_calidad_recurrentes?: string[];
 
   resumen_ejecutivo?: string | null;
 
-  // metadatos opcionales
+  // Metadatos del backend
+  _id?: string;
+  fecha_inicio?: string;
+  fecha_fin?: string;
+  created_at?: string;
+  fuente?: string;
+
+  // Legacy opcionales (si alguna vista antigua los usa)
+  performance_score_promedio?: number | null;
+  satisfaccion_cliente_promedio?: number | null;
+
+  // Metas antiguas opcionales
   DateTime_realizado?: string;
   fecha_inicio_busqueda?: string;
   fecha_fin_busqueda?: string;
