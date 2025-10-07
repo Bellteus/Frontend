@@ -12,6 +12,8 @@ import {
   FiSmile,
   FiUsers,
   FiTrendingUp,
+  FiClock,
+  FiAlertTriangle,
 } from "react-icons/fi";
 import { useMe } from "../hook/useMe";
 
@@ -83,7 +85,7 @@ const sentimentChip = (s?: string) => {
   return <span className="text-xs text-slate-500">—</span>;
 };
 
-/* =================== Export PDF (Agente) =================== */
+/* =================== Export PDF (Agente) — actualizado =================== */
 function exportarAgentePDF(data: AgentPerformanceReport) {
   const doc = new jsPDF();
   const now = new Date().toLocaleString();
@@ -101,26 +103,90 @@ function exportarAgentePDF(data: AgentPerformanceReport) {
     body: [
       ["ID Empleado", String(val(data.id_empleado))],
       ["Nombre", val(data.nombre_empleado)],
-      ["# Llamadas", val(data.numero_llamadas)],
-      ["Score promedio", n2(data.performance_score_promedio)],
-      ["Satisfacción promedio", n2(data.satisfaccion_cliente_promedio)],
-      ["Duración prom. (min)", n2(data.duracion_promedio_min)],
-      ["Resueltos", pct(data.resolucion_pct)],
-      ["Escalados", pct(data.escalados_pct)],
-      ["Follow-up", pct(data.followup_pct)],
-      ["Sentimiento predominante", val(data.sentimiento_predominante)],
+      [
+        "# Llamadas (válidas)",
+        val(
+          (data as any).numero_llamadas_validas ??
+            (data as any).numero_llamadas ??
+            (data as any).numero_llamadas_crudas ??
+            "—"
+        ),
+      ],
+      ...(typeof (data as any).numero_llamadas_crudas === "number" &&
+      typeof (data as any).numero_llamadas_validas === "number"
+        ? ([
+            ["# Llamadas (crudas)", String((data as any).numero_llamadas_crudas)],
+            [
+              "Descartadas",
+              String(
+                ((data as any).numero_llamadas_crudas -
+                  (data as any).numero_llamadas_validas) || 0
+              ),
+            ],
+            [
+              "Cortas (%)",
+              pct(((data as any).cortas_pct as number) ?? null),
+            ],
+          ] as [string, string][])
+        : []),
+      ["Score promedio", n2((data as any).score_promedio ?? null)],
+      ["Satisfacción promedio", n2((data as any).satisfaccion_promedio ?? null)],
+      ["Duración prom. (min)", n2((data as any).duracion_promedio_min ?? null)],
+      ...(typeof (data as any).aht_promedio_min === "number"
+        ? ([["AHT prom. (min)", n2((data as any).aht_promedio_min)]] as [
+            string,
+            string
+          ][])
+        : []),
+      ...(typeof (data as any).wrapup_promedio_seg === "number"
+        ? ([["Wrap-up prom. (seg)", n2((data as any).wrapup_promedio_seg)]] as [
+            string,
+            string
+          ][])
+        : []),
+      ...(typeof (data as any).hold_promedio_seg === "number"
+        ? ([["Hold prom. (seg)", n2((data as any).hold_promedio_seg)]] as [
+            string,
+            string
+          ][])
+        : []),
+      ...(typeof (data as any).holds_promedio === "number"
+        ? ([["# Holds prom.", n2((data as any).holds_promedio)]] as [
+            string,
+            string
+          ][])
+        : []),
+      ["Resueltos", pct((data as any).resolucion_pct ?? null)],
+      ["Escalados", pct((data as any).escalados_pct ?? null)],
+      ["Follow-up", pct((data as any).followup_pct ?? null)],
+      [
+        "Sentimiento predominante",
+        val((data as any).sentimiento_predominante),
+      ],
     ],
   });
 
-  const lastY =
+  const lastY0 =
     (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable
       ?.finalY ?? 80;
 
+  // Cumplimiento protocolo (si viene)
+  if ((data as any).cumplimiento_protocolo) {
+    autoTable(doc, {
+      startY: lastY0 + 6,
+      head: [["Protocolo", "Cantidad"]],
+      body: Object.entries((data as any).cumplimiento_protocolo).map(
+        ([k, v]) => [String(k).charAt(0).toUpperCase() + String(k).slice(1), String(v ?? 0)]
+      ),
+    });
+  }
+
+  // Listas cualitativas
   const addList = (title: string, items?: string[]) => {
     if (!items?.length) return;
     const y =
       (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable
-        ?.finalY ?? lastY;
+        ?.finalY ?? lastY0;
     doc.setFontSize(12);
     doc.text(title, 14, y + 8);
     doc.setFontSize(10);
@@ -131,22 +197,30 @@ function exportarAgentePDF(data: AgentPerformanceReport) {
     });
   };
 
-  addList("Fortalezas", data.fortalezas_recurrentes);
-  addList("Oportunidades de mejora", data.oportunidades_mejora_recurrentes);
-  addList("Recomendaciones", data.recomendaciones);
+  addList("Fortalezas", (data as any).fortalezas_recurrentes);
+  addList("Oportunidades de mejora", (data as any).oportunidades_mejora_recurrentes);
+  addList("Temas frecuentes", (data as any).temas_frecuentes);
+  addList("Motivos de follow-up", (data as any).motivos_followup_top);
+  addList("Palabras clave frecuentes", (data as any).palabras_clave_frecuentes);
+  addList("Alertas de calidad recurrentes", (data as any).alertas_calidad_recurrentes);
+  addList("Recomendaciones", (data as any).recomendaciones);
 
   const finalY =
     (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable
-      ?.finalY ?? lastY;
-  if (data.resumen_ejecutivo) {
+      ?.finalY ?? lastY0;
+  if ((data as any).resumen_ejecutivo) {
     doc.setFontSize(12);
     doc.text("Resumen ejecutivo:", 14, finalY + 10);
     doc.setFontSize(10);
-    doc.text(doc.splitTextToSize(data.resumen_ejecutivo, 180), 14, finalY + 16);
+    doc.text(
+      doc.splitTextToSize((data as any).resumen_ejecutivo, 180),
+      14,
+      finalY + 16
+    );
   }
 
   doc.save(
-    `Analisis_Agente_${data.nombre_empleado}_${new Date().toISOString()}.pdf`
+    `Analisis_Agente_${(data as any).nombre_empleado}_${new Date().toISOString()}.pdf`
   );
 }
 
@@ -172,7 +246,7 @@ const HistorialAgentePerformance = () => {
     const scope = Array.isArray((me as any)?.country_scope)
       ? (me as any).country_scope
       : [];
-    const first = scope.find((s:any) => s !== "*");
+    const first = scope.find((s: any) => s !== "*");
     return normalizeCountryLabel(first || "");
   }, [isAdmin, me]);
 
@@ -183,7 +257,7 @@ const HistorialAgentePerformance = () => {
     }
   }, [isAdmin, scopedCountryLabel]);
 
-  // Traer reportes (el backend ya debería respetar el JWT; aquí reforzamos)
+  // Traer reportes
   const fetchReports = async () => {
     setLoading(true);
     try {
@@ -212,10 +286,9 @@ const HistorialAgentePerformance = () => {
 
   // Recorte por país según selección (admin) o scope (no-admin)
   const reportsByCountry = useMemo(() => {
-    // si no hay campo pais, confiamos en que backend ya filtró; retornamos tal cual
     const hasPais = (r: AgentReportStored) => Boolean((r as any).pais);
     if (!isAdmin) {
-      if (!scopedCountryLabel) return reports; // fallback
+      if (!scopedCountryLabel) return reports;
       if (!reports.some(hasPais)) return reports;
       return reports.filter(
         (r) => normalizeCountryLabel((r as any).pais) === scopedCountryLabel
@@ -223,7 +296,7 @@ const HistorialAgentePerformance = () => {
     }
     // admin
     if (!countryFilter) return reports;
-    if (!reports.some(hasPais)) return reports; // si no hay pais en data
+    if (!reports.some(hasPais)) return reports;
     return reports.filter(
       (r) => normalizeCountryLabel((r as any).pais) === countryFilter
     );
@@ -265,7 +338,9 @@ const HistorialAgentePerformance = () => {
       const desde = fechaInicio || "—";
       const hasta = fechaFin || "—";
       await LogsService.audit(
-        `Historial agentes — filtros { agente="${agente}", desde=${desde}, hasta=${hasta}, pais=${isAdmin ? (countryFilter || "Todos") : scopedCountryLabel} }`
+        `Historial agentes — filtros { agente="${agente}", desde=${desde}, hasta=${hasta}, pais=${
+          isAdmin ? countryFilter || "Todos" : scopedCountryLabel
+        } }`
       );
     } catch {
     } finally {
@@ -279,7 +354,9 @@ const HistorialAgentePerformance = () => {
       exportarAgentePDF(r);
       await LogsService.audit(
         `Descargó reporte PDF de agente "${r.nombre_empleado}"${
-          (r as any).pais ? ` (pais=${normalizeCountryLabel((r as any).pais)})` : ""
+          (r as any).pais
+            ? ` (pais=${normalizeCountryLabel((r as any).pais)})`
+            : ""
         }`
       );
     } catch {}
@@ -360,7 +437,9 @@ const HistorialAgentePerformance = () => {
                   disabled
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 bg-slate-50 text-slate-700"
                 >
-                  <option value={scopedCountryLabel}>{scopedCountryLabel || "—"}</option>
+                  <option value={scopedCountryLabel}>
+                    {scopedCountryLabel || "—"}
+                  </option>
                 </select>
               )}
             </div>
@@ -438,7 +517,7 @@ const HistorialAgentePerformance = () => {
                   {[
                     "Nombre",
                     "ID",
-                    "Llamadas",
+                    "Llamadas (válidas)",
                     "Score prom.",
                     "Satisfacción",
                     "Sentimiento",
@@ -473,13 +552,24 @@ const HistorialAgentePerformance = () => {
                         </div>
                       </td>
                       <td className="px-4 py-2 text-center">{r.id_empleado ?? "—"}</td>
-                      <td className="px-4 py-2 text-center">{r.numero_llamadas ?? "—"}</td>
-                      <td className="px-4 py-2 text-center">{n2(r.performance_score_promedio)}</td>
-                      <td className="px-4 py-2 text-center">{n2(r.satisfaccion_cliente_promedio)}</td>
                       <td className="px-4 py-2 text-center">
-                        {sentimentChip(r.sentimiento_predominante ?? undefined)}
+                        {(r as any).numero_llamadas_validas ??
+                          (r as any).numero_llamadas ??
+                          (r as any).numero_llamadas_crudas ??
+                          "—"}
                       </td>
-                      <td className="px-4 py-2 text-center">{pct(r.resolucion_pct)}</td>
+                      <td className="px-4 py-2 text-center">
+                        {n2((r as any).score_promedio ?? null)}
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        {n2((r as any).satisfaccion_promedio ?? null)}
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        {sentimentChip((r as any).sentimiento_predominante ?? undefined)}
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        {pct((r as any).resolucion_pct ?? null)}
+                      </td>
                       <td className="px-4 py-2 text-center">
                         <div className="flex flex-col">
                           <span className="text-slate-800">{fmtDateShort(desde)}</span>
@@ -512,6 +602,12 @@ const HistorialAgentePerformance = () => {
                       </span>
                       <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">
                         <FiFileText /> exportación PDF por fila
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">
+                        <FiClock /> campos AHT/Hold/Wrap-up incluidos en PDF
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">
+                        <FiAlertTriangle /> alertas/temas en PDF si existen
                       </span>
                     </div>
                   </td>

@@ -60,8 +60,8 @@ const fmtDate = (iso?: string) => (iso ? new Date(iso).toLocaleString() : "—")
 const fmtDateShort = (iso?: string) =>
   iso ? new Date(iso).toLocaleDateString() : "—";
 
-const getRangeStart = (r: CountryReportStored) => r.fecha_inicio;
-const getRangeEnd = (r: CountryReportStored) => r.fecha_fin;
+const getRangeStart = (r: CountryReportStored) => r.fecha_inicio || r.created_at;
+const getRangeEnd = (r: CountryReportStored) => r.fecha_fin || r.created_at;
 
 const inRange = (d: Date, from?: string, to?: string) => {
   if (!from && !to) return true;
@@ -71,13 +71,34 @@ const inRange = (d: Date, from?: string, to?: string) => {
   return t >= f && t <= e;
 };
 
-const sentimentChip = (s?: string) => {
-  const v = (s || "").toLowerCase();
-  if (v === "positivo")
+// Fallback: si no hay sentimiento_global o viene "desconocido", elegir el mayor de la distrib.
+const deriveSentimientoGlobal = (
+  dist?: SentimentDistribution | null,
+  provided?: string | null
+): "positivo" | "neutral" | "negativo" | undefined => {
+  const clean = (provided || "").toLowerCase().trim();
+  if (clean && clean !== "desconocido" && ["positivo", "neutral", "negativo"].includes(clean))
+    return clean as any;
+  if (!dist) return undefined;
+
+  const pos = typeof dist.positivo === "number" ? dist.positivo : -1;
+  const neu = typeof dist.neutral === "number" ? dist.neutral : -1;
+  const neg = typeof dist.negativo === "number" ? dist.negativo : -1;
+
+  const max = Math.max(pos, neu, neg);
+  if (max < 0) return undefined;
+  if (max === pos) return "positivo";
+  if (max === neu) return "neutral";
+  return "negativo";
+};
+
+const sentimentChip = (s?: string, dist?: SentimentDistribution | null) => {
+  const best = deriveSentimientoGlobal(dist, s);
+  if (best === "positivo")
     return <span className={`${CLASSES.chip} ${CLASSES.chipPos}`}>Positivo</span>;
-  if (v === "negativo")
+  if (best === "negativo")
     return <span className={`${CLASSES.chip} ${CLASSES.chipNeg}`}>Negativo</span>;
-  if (v === "neutral")
+  if (best === "neutral")
     return <span className={`${CLASSES.chip} ${CLASSES.chipNeu}`}>Neutral</span>;
   return <span className="text-xs text-slate-500">—</span>;
 };
@@ -103,6 +124,10 @@ function exportarPaisPDF(data: CountryPerformanceReport) {
   const doc = new jsPDF();
   const now = new Date().toLocaleString();
 
+  // Fallback seguro para sentimiento global
+  const sentimientoGlobal =
+    deriveSentimientoGlobal(data.sentimiento_distribucion, data.sentimiento_global) || "—";
+
   doc.setFontSize(16);
   doc.text("Reporte de Análisis por País", 14, 15);
   doc.setFontSize(10);
@@ -117,7 +142,7 @@ function exportarPaisPDF(data: CountryPerformanceReport) {
       ["# Llamadas", data.numero_llamadas ?? "—"],
       ["Score promedio", n2(data.performance_score_promedio)],
       ["Satisfacción promedio", n2(data.satisfaccion_cliente_promedio)],
-      ["Sentimiento global", data.sentimiento_global || "—"],
+      ["Sentimiento global", sentimientoGlobal],
       ["Resueltos", pct(data.porcentaje_resueltos)],
       ["Escalados", pct(data.porcentaje_escalados)],
       ["Follow-up", pct(data.porcentaje_followup)],
@@ -213,7 +238,7 @@ const HistorialPaisPerformance = () => {
     const scope = Array.isArray((me as any)?.country_scope)
       ? (me as any).country_scope
       : [];
-    const first = scope.find((s:any) => s !== "*");
+    const first = scope.find((s: any) => s !== "*");
     return normalizeCountryLabel(first || "");
   }, [isAdmin, me]);
 
@@ -448,6 +473,11 @@ const HistorialPaisPerformance = () => {
                 {filtered.map((r, idx) => {
                   const desde = getRangeStart(r);
                   const hasta = getRangeEnd(r);
+                  const sentiChip = sentimentChip(
+                    r.sentimiento_global ?? undefined,
+                    r.sentimiento_distribucion ?? null
+                  );
+
                   return (
                     <tr
                       key={r._id || `${r.pais}-${idx}`}
@@ -470,9 +500,7 @@ const HistorialPaisPerformance = () => {
                       <td className="px-4 py-2 text-center">
                         {n2(r.satisfaccion_cliente_promedio)}
                       </td>
-                      <td className="px-4 py-2 text-center">
-                        {sentimentChip(r.sentimiento_global ?? undefined)}
-                      </td>
+                      <td className="px-4 py-2 text-center">{sentiChip}</td>
                       <td className="px-4 py-2 text-center">
                         {pct(r.porcentaje_resueltos)}
                       </td>
@@ -510,7 +538,7 @@ const HistorialPaisPerformance = () => {
                         <FiTrendingUp /> {filtered.length} reportes
                       </span>
                       <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">
-                        <FiSmile /> sentimiento legible (chips)
+                        <FiSmile /> sentimiento legible (chips con fallback)
                       </span>
                     </div>
                   </td>
